@@ -93,10 +93,10 @@ class AuthRepository implements IAuthRepository {
       ApiEndpoints.oauthLogin,
       data: {
         'provider': provider,
-        if (idToken != null) 'id_token': idToken,
-        if (accessToken != null) 'access_token': accessToken,
-        if (nom != null) 'nom': nom,
-        if (email != null) 'email': email,
+        'id_token': ?idToken,
+        'access_token': ?accessToken,
+        'nom': ?nom,
+        'email': ?email,
         'langue_preferee': languePreferee,
       },
     );
@@ -107,8 +107,16 @@ class AuthRepository implements IAuthRepository {
       accessToken: authResponse.accessToken,
       refreshToken: authResponse.refreshToken,
     );
-    await _cacheUser(authResponse.user);
-    return authResponse.user;
+    if (authResponse.user != null) {
+      await _cacheUser(authResponse.user!);
+      return authResponse.user!;
+    }
+    return await getCurrentUser() ??
+        UserModel(
+          id: 0,
+          nom: nom ?? email ?? 'Usager $provider',
+          telephone: '',
+        );
   }
 
   @override
