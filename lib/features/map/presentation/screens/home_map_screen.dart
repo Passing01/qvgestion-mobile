@@ -2905,7 +2905,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       final distText = displayMeters >= 1000.0
           ? '${(displayMeters / 1000.0).toStringAsFixed(1)} km'
           : '${displayMeters.round()} m';
-      final instText = step.spoken(dist: displayMeters, language: activeLang);
+      final instText = (step.maneuverType == 'depart' && step.instruction.isNotEmpty)
+          ? step.instruction
+          : step.spoken(dist: displayMeters, language: activeLang);
       return (
         distanceText: distText,
         instructionText: instText,

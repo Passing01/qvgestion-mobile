@@ -177,7 +177,7 @@ void main() {
     await tester.tap(find.text('Démarrer la navigation vocale'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Prenez la voie de droite vers le carrefour'), findsOneWidget);
+    expect(find.text('Prenez la voie de droite vers le carrefour'), findsWidgets);
     expect(find.byTooltip('Arrêter la navigation'), findsOneWidget);
   });
 
