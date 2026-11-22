@@ -2754,8 +2754,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               child: ConstrainedBox(
                 constraints: BoxConstraints(
                   maxHeight: (screenSize.height -
-                          (screenState == MapScreenState.explore ? 275.0 : 130.0))
-                      .clamp(220.0, screenSize.height * 0.68),
+                          (screenState == MapScreenState.explore ? 275.0 : 96.0))
+                      .clamp(
+                        220.0,
+                        screenState == MapScreenState.explore
+                            ? screenSize.height * 0.68
+                            : screenSize.height * 0.82,
+                      ),
                 ),
                 child: SingleChildScrollView(
                   child: _buildBottomContext(

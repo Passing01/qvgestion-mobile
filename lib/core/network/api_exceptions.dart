@@ -119,7 +119,9 @@ abstract class ApiException implements Exception {
       case DioExceptionType.unknown:
       default:
         return UnknownApiException(
-          message: dioException.message ?? 'Une erreur inattendue est survenue.',
+          message: dioException.message ??
+              dioException.error?.toString() ??
+              'Une erreur inattendue est survenue.',
         );
     }
   }

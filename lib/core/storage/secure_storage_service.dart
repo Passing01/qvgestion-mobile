@@ -37,8 +37,9 @@ class SecureStorageService implements ISecureStorage {
   Future<String?> read({required String key}) async {
     try {
       return await _storage.read(key: key);
-    } catch (e) {
-      throw Exception('Erreur de lecture dans le stockage sécurisé pour la clé $key: $e');
+    } catch (_) {
+      // Sur Web (WebCrypto) ou après réinitialisation système, une clé illisible ne doit pas bloquer l'API
+      return null;
     }
   }
 

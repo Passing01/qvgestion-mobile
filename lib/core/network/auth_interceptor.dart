@@ -42,10 +42,14 @@ class AuthInterceptor extends QueuedInterceptor {
     }
     options.headers['Accept'] = 'application/json';
 
-    // Injection automatique du token Bearer si disponible
-    final token = await tokenStorage.getAccessToken();
-    if (token != null && token.isNotEmpty) {
-      options.headers['Authorization'] = 'Bearer $token';
+    // Injection automatique du token Bearer si disponible (protégé contre les erreurs de stockage WebCrypto)
+    try {
+      final token = await tokenStorage.getAccessToken();
+      if (token != null && token.isNotEmpty) {
+        options.headers['Authorization'] = 'Bearer $token';
+      }
+    } catch (e) {
+      AppLogger.w('Lecture token ignorée dans AuthInterceptor: $e');
     }
 
     return handler.next(options);

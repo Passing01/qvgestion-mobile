@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:qvgestion_mobile/core/config/env_config.dart';
 import 'package:qvgestion_mobile/core/network/api_exceptions.dart';
 import 'package:qvgestion_mobile/core/network/auth_interceptor.dart';
@@ -23,7 +24,7 @@ class ApiClient {
             baseUrl: EnvConfig.apiBaseUrl,
             connectTimeout: EnvConfig.connectTimeout,
             receiveTimeout: EnvConfig.receiveTimeout,
-            sendTimeout: EnvConfig.sendTimeout,
+            sendTimeout: kIsWeb ? null : EnvConfig.sendTimeout,
             headers: {
               'Accept': 'application/json',
               'Content-Type': 'application/json',
