@@ -1765,11 +1765,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         themeMode == ThemeMode.dark ||
         (themeMode == ThemeMode.system &&
             platformBrightness == Brightness.dark);
-    final use3dStyleNow = !isSatellite &&
-        (is3dMap ||
-            (screenState == MapScreenState.activeNavigation &&
-                (navViewMode == NavigationViewMode.buildings3d || isRadarView) &&
-                !isDark));
+    final use3dStyleNow = !isSatellite && is3dMap;
     final mapTheme = isSatellite
         ? MapTheme.satellite
         : (use3dStyleNow
@@ -1857,7 +1853,22 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               }
               final route = ref.read(activeRouteProvider).value;
               if (route != null) {
-                await mapService.setRoute(route);
+                final isActiveNav =
+                    screenState == MapScreenState.activeNavigation;
+                await mapService.setRoute(
+                  route,
+                  fitCamera: !isActiveNav,
+                  alternatives: _currentRouteAlternatives,
+                );
+                if (isActiveNav &&
+                    _lastNavUpdate?.snappedPoint != null &&
+                    (_lastNavUpdate?.off ?? 999) <= 30.0) {
+                  await mapService.updateRouteProgress(
+                    snappedLat: _lastNavUpdate!.snappedPoint!.latitude,
+                    snappedLon: _lastNavUpdate!.snappedPoint!.longitude,
+                    segmentIndex: _lastNavUpdate!.segmentIndex,
+                  );
+                }
               }
               if (use3dStyleNow) {
                 final monuments = await ref.read(monuments3dGeoJsonProvider.future).catchError(
