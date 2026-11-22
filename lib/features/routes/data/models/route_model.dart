@@ -197,6 +197,8 @@ class RouteModel extends Equatable {
   final int? startSnapM;
   final List<List<double>>? walkingSegment;
   final double? walkingDistanceMeters;
+  final String? routeLabel;
+  final List<RouteModel> alternatives;
 
   const RouteModel({
     required this.mode,
@@ -211,6 +213,8 @@ class RouteModel extends Equatable {
     this.startSnapM,
     this.walkingSegment,
     this.walkingDistanceMeters,
+    this.routeLabel,
+    this.alternatives = const [],
   });
 
   factory RouteModel.fromJson(Map<String, dynamic> json) {
@@ -326,6 +330,19 @@ class RouteModel extends Equatable {
     }
     final walkingDist = (json['walking_distance_m'] as num?)?.toDouble();
 
+    final parsedAlts = <RouteModel>[];
+    final rawAlts = json['alternatives'];
+    if (rawAlts is List) {
+      for (final item in rawAlts) {
+        if (item is Map) {
+          try {
+            final cleanMap = Map<String, dynamic>.from(item)..remove('alternatives');
+            parsedAlts.add(RouteModel.fromJson(cleanMap));
+          } catch (_) {}
+        }
+      }
+    }
+
     return RouteModel(
       mode: (json['mode'] as String?) ?? 'moto',
       distanceMeters: dist,
@@ -341,8 +358,14 @@ class RouteModel extends Equatable {
       startSnapM: (json['start_snap_m'] as num?)?.toInt(),
       walkingSegment: parsedWalk,
       walkingDistanceMeters: walkingDist,
+      routeLabel: json['route_label'] as String?,
+      alternatives: parsedAlts,
     );
   }
+
+  /// Liste complète des tracés proposés (principal + alternatifs)
+  List<RouteModel> get allOptions =>
+      alternatives.isNotEmpty ? alternatives : [this];
 
   RouteModel copyWith({
     String? mode,
@@ -357,6 +380,8 @@ class RouteModel extends Equatable {
     int? startSnapM,
     List<List<double>>? walkingSegment,
     double? walkingDistanceMeters,
+    String? routeLabel,
+    List<RouteModel>? alternatives,
   }) {
     return RouteModel(
       mode: mode ?? this.mode,
@@ -371,6 +396,8 @@ class RouteModel extends Equatable {
       startSnapM: startSnapM ?? this.startSnapM,
       walkingSegment: walkingSegment ?? this.walkingSegment,
       walkingDistanceMeters: walkingDistanceMeters ?? this.walkingDistanceMeters,
+      routeLabel: routeLabel ?? this.routeLabel,
+      alternatives: alternatives ?? this.alternatives,
     );
   }
 

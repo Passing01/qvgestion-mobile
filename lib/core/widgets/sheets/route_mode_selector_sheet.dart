@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
+import 'package:qvgestion_mobile/features/routes/data/models/route_model.dart';
 
 class RouteModeOption {
   final String id;
@@ -30,6 +31,9 @@ class RouteModeSelectorSheet extends StatelessWidget {
   final ValueChanged<String> onModeSelected;
   final VoidCallback onConfirm;
   final VoidCallback? onBack;
+  final List<RouteModel> alternativeRoutes;
+  final RouteModel? selectedRoute;
+  final ValueChanged<RouteModel>? onAlternativeSelected;
 
   const RouteModeSelectorSheet({
     super.key,
@@ -40,6 +44,9 @@ class RouteModeSelectorSheet extends StatelessWidget {
     required this.onModeSelected,
     required this.onConfirm,
     this.onBack,
+    this.alternativeRoutes = const [],
+    this.selectedRoute,
+    this.onAlternativeSelected,
   });
 
   @override
@@ -283,6 +290,54 @@ class RouteModeSelectorSheet extends StatelessWidget {
                   ),
                 );
               }),
+              // Choix d'itinéraires alternatifs (style Google Maps / Waze) si plusieurs voies possibles
+              if (alternativeRoutes.length > 1) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  'Itinéraires proposés',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textSecondaryLight,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 46,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: alternativeRoutes.length,
+                    separatorBuilder: (context, index) => const SizedBox(width: 8),
+                    itemBuilder: (context, idx) {
+                      final alt = alternativeRoutes[idx];
+                      final isChosen = selectedRoute == null
+                          ? idx == 0
+                          : (selectedRoute!.distanceMeters == alt.distanceMeters &&
+                              selectedRoute!.durationSeconds == alt.durationSeconds);
+                      final label = alt.routeLabel ??
+                          (idx == 0 ? 'Principal' : 'Option ${idx + 1}');
+                      return ChoiceChip(
+                        key: Key('chip_alt_route_$idx'),
+                        selected: isChosen,
+                        selectedColor: AppColors.primaryLight,
+                        side: BorderSide(
+                          color: isChosen ? AppColors.primary : const Color(0xFFD1D5DB),
+                          width: isChosen ? 1.5 : 1,
+                        ),
+                        label: Text(
+                          '$label · ${alt.durationFormatted} (${alt.distanceFormatted})',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: isChosen ? FontWeight.bold : FontWeight.w500,
+                            color: isChosen ? AppColors.primary : const Color(0xFF374151),
+                          ),
+                        ),
+                        onSelected: (_) => onAlternativeSelected?.call(alt),
+                      );
+                    },
+                  ),
+                ),
+              ],
               const SizedBox(height: 8),
               // Boutons Annuler + Démarrer la navigation vocale
               Row(

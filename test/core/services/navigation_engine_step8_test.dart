@@ -123,5 +123,29 @@ void main() {
       expect(NavigationEngine.isStartFarFromRoute(route, farStart), isTrue);
       expect(NavigationEngine.isStartFarFromRoute(route, nearStart), isFalse);
     });
+
+    test('7. projection retourne snappedPoint exactement sur le tracé et gère précision GPS urbaine <= 50 m', () {
+      final route = straightRoute(1000);
+      final e = NavigationEngine(route);
+
+      // Légère dérive latérale de 12 m à 300 m du départ -> snappedPoint reste sur la ligne (longitude exacte du tracé)
+      final drifted = pointAlongAndOff(300.0, 12.0);
+      final u = e.onFix(drifted, 35.0, t0);
+      expect(u.snappedPoint, isNotNull);
+      expect(u.snappedPoint!.longitude, closeTo(-1.5197, 1e-6));
+      expect(u.along, closeTo(300.0, 1.5));
+
+      // Sortie de route à 60 m avec précision GPS urbaine 45 m (<= 50 m) -> 3 fixes déclenchent le recalcul
+      var triggered = false;
+      for (var i = 0; i < 4; i++) {
+        final offRes = e.onFix(
+          pointAlongAndOff(350.0 + i * 15, 60.0),
+          45.0,
+          t0.add(Duration(seconds: 1 + i)),
+        );
+        if (offRes.needsReroute) triggered = true;
+      }
+      expect(triggered, isTrue);
+    });
   });
 }

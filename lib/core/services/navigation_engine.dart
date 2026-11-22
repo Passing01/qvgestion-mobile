@@ -10,8 +10,14 @@ class Projection {
   final double along;
   final double off;
   final int segmentIndex;
+  final LatLng? snappedPoint;
 
-  const Projection(this.along, this.off, {this.segmentIndex = 0});
+  const Projection(
+    this.along,
+    this.off, {
+    this.segmentIndex = 0,
+    this.snappedPoint,
+  });
 }
 
 /// Géométrie d'un tracé routier et projection locale en mètres (Étape 8)
@@ -83,6 +89,7 @@ class RouteGeometry {
     double best = double.infinity;
     double bestAlong = 0;
     int bestSeg = startIdx;
+    LatLng bestSnapped = pts[startIdx];
     final q = _xy(p);
 
     for (var i = startIdx; i <= endIdx; i++) {
@@ -101,9 +108,13 @@ class RouteGeometry {
         best = d;
         bestAlong = cum[i] + t * math.sqrt(len2);
         bestSeg = i;
+        bestSnapped = LatLng(
+          pts[i].latitude + t * (pts[i + 1].latitude - pts[i].latitude),
+          pts[i].longitude + t * (pts[i + 1].longitude - pts[i].longitude),
+        );
       }
     }
-    return Projection(bestAlong, best, segmentIndex: bestSeg);
+    return Projection(bestAlong, best, segmentIndex: bestSeg, snappedPoint: bestSnapped);
   }
 }
 
@@ -119,6 +130,8 @@ class NavUpdate {
     this.off = 0,
     this.needsReroute = false,
     this.error,
+    this.snappedPoint,
+    this.segmentIndex = 0,
   });
 
   final NavState state;
@@ -127,6 +140,8 @@ class NavUpdate {
   final double off;
   final bool needsReroute;
   final String? error;
+  final LatLng? snappedPoint;
+  final int segmentIndex;
 }
 
 /// Moteur de navigation isolé (sans carte ni réseau), testable unitairement (Étape 8)
@@ -174,8 +189,8 @@ class NavigationEngine {
     AppLogger.i(msg);
     debugPrint(msg);
 
-    // Règle 4 : Sortie de route comptabilisée uniquement si précision <= 30 m
-    if (accuracy <= 30) {
+    // Règle 4 : Sortie de route comptabilisée si précision GPS utilisable (<= 50 m en environnement urbain)
+    if (accuracy <= 50) {
       _off = pr.off > offRouteM ? _off + 1 : 0;
     }
 
@@ -188,6 +203,8 @@ class NavigationEngine {
         along: pr.along,
         remaining: remaining,
         off: pr.off,
+        snappedPoint: pr.snappedPoint,
+        segmentIndex: pr.segmentIndex,
       );
     }
 
@@ -203,6 +220,8 @@ class NavigationEngine {
         remaining: remaining,
         off: pr.off,
         needsReroute: true,
+        snappedPoint: pr.snappedPoint,
+        segmentIndex: pr.segmentIndex,
       );
     }
 
@@ -215,6 +234,8 @@ class NavigationEngine {
       along: pr.along,
       remaining: remaining,
       off: pr.off,
+      snappedPoint: pr.snappedPoint,
+      segmentIndex: pr.segmentIndex,
     );
   }
 

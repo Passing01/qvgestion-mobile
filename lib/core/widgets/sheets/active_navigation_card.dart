@@ -416,10 +416,10 @@ class ActiveNavigationCard extends StatelessWidget {
       label = 'OpenData';
       icon = Icons.public_rounded;
     } else {
-      bg = const Color(0xFFFEF3C7);
-      fg = const Color(0xFF92400E);
-      label = 'Estimé';
-      icon = Icons.info_outline_rounded;
+      bg = const Color(0xFFE0F2FE);
+      fg = const Color(0xFF0369A1);
+      label = 'Guidage GPS';
+      icon = Icons.gps_fixed_rounded;
     }
 
     return Container(

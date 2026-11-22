@@ -112,6 +112,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Timer? _smoothMotionTimer;
   DateTime _lastRadarSceneFetch = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastNavCameraUpdate = DateTime.fromMillisecondsSinceEpoch(0);
+  Offset? _mapPointerDownPos;
+  List<RouteModel> _currentRouteAlternatives = const [];
   StreamSubscription<ParsedLocationLink>? _locationIntentSub;
 
   static bool get _isUnderWidgetTest {
@@ -248,16 +250,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _gpsTrackingSub?.cancel();
       _gpsTrackingSub = locationService.stream.listen((pos) {
         if (!locationService.isUsable(pos)) return;
-        ref
-            .read(mapServiceProvider)
-            .updateUserLocation(pos.latitude, pos.longitude);
-        ref
-            .read(currentLocationProvider.notifier)
-            .updateLocation(pos.latitude, pos.longitude, 'Ma position GPS');
+        final isActiveNav =
+            ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
+                _navEngine != null;
 
-        // Étape 8 : Alimentation du moteur de navigation à chaque point GPS réel utilisable
-        if (ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
-            _navEngine != null) {
+        if (isActiveNav) {
           final speedKmh = pos.speed.isFinite && pos.speed > 0 ? pos.speed * 3.6 : 0.0;
           if (pos.speed > 0.8 && pos.heading.isFinite && pos.heading >= 0) {
             _vehicleHeading = pos.heading;
@@ -268,12 +265,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             speedKmh,
             DateTime.now(),
           );
+          final snapped = _lastNavUpdate?.snappedPoint;
+          final displayLat = (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+              ? snapped.latitude
+              : pos.latitude;
+          final displayLon = (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+              ? snapped.longitude
+              : pos.longitude;
           if (_following) {
             final navMode = ref.read(navigationViewModeProvider);
             if (navMode == NavigationViewMode.buildings3d) {
               ref.read(mapServiceProvider).animateCamera(
-                    lat: pos.latitude,
-                    lng: pos.longitude,
+                    lat: displayLat,
+                    lng: displayLon,
                     zoom: 18.3,
                     bearing: _vehicleHeading,
                     tilt: 64.0,
@@ -282,11 +286,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               final c = _mapController ?? ref.read(mapServiceProvider).controller;
               c?.animateCamera(
                 maplibre.CameraUpdate.newLatLng(
-                  maplibre.LatLng(pos.latitude, pos.longitude),
+                  maplibre.LatLng(displayLat, displayLon),
                 ),
               );
             }
           }
+        } else {
+          ref
+              .read(mapServiceProvider)
+              .updateUserLocation(pos.latitude, pos.longitude);
+          ref
+              .read(currentLocationProvider.notifier)
+              .updateLocation(pos.latitude, pos.longitude, 'Ma position GPS');
         }
       });
 
@@ -381,11 +392,37 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       return;
     }
 
+    final isNavBuildings3d =
+        ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
+            ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d;
+    final snapped = _lastNavUpdate?.snappedPoint;
+    final targetLat = (isNavBuildings3d && snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+        ? snapped.latitude
+        : p.latitude;
+    final targetLon = (isNavBuildings3d && snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+        ? snapped.longitude
+        : p.longitude;
+
+    if (isNavBuildings3d) {
+      await ref.read(mapServiceProvider).animateCamera(
+            lat: targetLat,
+            lng: targetLon,
+            zoom: 18.3,
+            bearing: _vehicleHeading,
+            tilt: 64.0,
+          );
+      if (mounted) {
+        setState(() => _following = true);
+        AppLogger.i('[MAP] Suivi caméra 3D réactivé sur la position');
+      }
+      return;
+    }
+
     final c = _mapController ?? ref.read(mapServiceProvider).controller;
     if (c != null) {
       await c.animateCamera(
         maplibre.CameraUpdate.newLatLngZoom(
-          maplibre.LatLng(p.latitude, p.longitude),
+          maplibre.LatLng(targetLat, targetLon),
           16.0,
         ),
       );
@@ -522,15 +559,30 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       });
     }
 
-    // Alimentation de l'interpolateur 60 FPS et actualisation de la scène Radar Live
+    // Map-matching : recaler le marqueur sur l'axe du tracé si l'usager est bien sur la voie (<= 30 m)
+    final displayPos =
+        (u.snappedPoint != null && u.off <= 30.0) ? u.snappedPoint! : pos;
+
+    // Alimentation de l'interpolateur 60 FPS et effacement progressif du trait bleu derrière le véhicule
     _motionInterpolator.pushTarget(
-      latitude: pos.latitude,
-      longitude: pos.longitude,
+      latitude: displayPos.latitude,
+      longitude: displayPos.longitude,
       bearingDeg: _vehicleHeading,
       speedKmh: speedKmh,
     );
+    ref.read(mapServiceProvider).updateUserLocation(
+          displayPos.latitude,
+          displayPos.longitude,
+        );
+    if (!_isUnderWidgetTest) {
+      ref.read(mapServiceProvider).updateRouteProgress(
+            snappedLat: displayPos.latitude,
+            snappedLon: displayPos.longitude,
+            segmentIndex: u.segmentIndex,
+          );
+    }
     _ensureSmoothMotionTicker();
-    _maybeRefreshRadarScene(pos.latitude, pos.longitude);
+    _maybeRefreshRadarScene(displayPos.latitude, displayPos.longitude);
 
     // Étape 9a · Annonceur pas-à-pas à 200m et 50m (fenêtre 40m, sans répétition)
     final lang = ref.read(guidanceLanguageProvider);
@@ -540,16 +592,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     // Calcul réactif de l'étape de navigation courante
     if (_guideSteps.isNotEmpty) {
-      int targetIndex = 0;
+      int targetIndex = _guideSteps.length - 1;
       for (var i = 0; i < _guideSteps.length; i++) {
-        if (u.along < _guideSteps[i].along - 10) {
+        if (i == 0 && _guideSteps.length > 1 && _guideSteps[0].maneuverType == 'depart') {
+          continue;
+        }
+        if (u.along < _guideSteps[i].along - 12.0) {
           targetIndex = i;
           break;
         }
-        targetIndex = i;
       }
       if (targetIndex != ref.read(currentManeuverIndexProvider)) {
         ref.read(currentManeuverIndexProvider.notifier).setIndex(targetIndex);
+        ref.read(voiceGuideProvider).clearBanner();
       }
     }
 
@@ -820,10 +875,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     final activeLang = ref.read(guidanceLanguageProvider);
-    await ref
+    final freshEnriched = await ref
         .read(activeEnrichedRouteProvider.notifier)
         .enrichRoute(route: route, language: activeLang);
-    ref.read(currentManeuverIndexProvider.notifier).reset();
+    _guideSteps = buildGuideSteps(
+      route: route,
+      enrichedRoute: freshEnriched ?? enriched,
+      places: places,
+    );
+    _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
     if (mounted) {
       AppSnackbar.showSuccess(
         context,
@@ -1562,8 +1622,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ref.listen(activeRouteProvider, (prev, next) {
       final route = next.value;
       if (route != null) {
-        mapService.setRoute(route);
+        if (route.alternatives.isNotEmpty) {
+          _currentRouteAlternatives = route.alternatives;
+        }
+        final isActiveNav =
+            ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation;
+        mapService.setRoute(
+          route,
+          fitCamera: !isActiveNav,
+          alternatives: _currentRouteAlternatives,
+        );
       } else {
+        _currentRouteAlternatives = const [];
         mapService.clearRoute();
       }
     });
@@ -1581,9 +1651,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
     });
 
-    // Synchronisation position GPS vers MapService (dépose le repère de position)
+    // Synchronisation position GPS vers MapService (hors navigation active où le map-matching prime)
     ref.listen(currentLocationProvider, (prev, next) {
-      mapService.updateUserLocation(next.lat, next.lon);
+      if (ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation) {
+        mapService.updateUserLocation(next.lat, next.lon);
+      }
       if (prev == null ||
           (prev.lat == AppConstants.ouagaCenterLatitude &&
               prev.lon == AppConstants.ouagaCenterLongitude &&
@@ -1722,7 +1794,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       body: Stack(
         children: [
           // 1. CARTE INTERACTIVE UNIFIÉE : MapLibre Native + OpenStreetMap
-          FasoMap(
+          Listener(
+            onPointerDown: (ev) {
+              _mapPointerDownPos = ev.position;
+            },
+            onPointerMove: (ev) {
+              if (_following &&
+                  _mapPointerDownPos != null &&
+                  (ev.position - _mapPointerDownPos!).distance > 10.0) {
+                setState(() => _following = false);
+                AppLogger.i('[MAP] Caméra libérée par geste utilisateur');
+              }
+            },
+            onPointerUp: (_) => _mapPointerDownPos = null,
+            child: FasoMap(
             key: const Key('faso_map_widget'),
             styleUrl: styleUrl,
             attributionText: attributionText,
@@ -1791,6 +1876,27 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               AboutCreditsModal.show(context);
             },
           ),
+          ),
+
+          // Bouton flottant "Recentrer" quand l'usager explore librement la carte pendant l'itinéraire
+          if (screenState == MapScreenState.activeNavigation && !_following && !isRadarView)
+            Positioned(
+              left: 16,
+              bottom: 245,
+              child: FloatingActionButton.extended(
+                key: const Key('btn_nav_recenter'),
+                heroTag: 'nav_recenter_fab',
+                onPressed: _recenter,
+                backgroundColor: Colors.white,
+                foregroundColor: AppColors.primary,
+                elevation: 4,
+                icon: const Icon(Icons.my_location_rounded, size: 20),
+                label: const Text(
+                  'Recentrer',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ),
+            ),
 
           // 1.05 VUE RADAR LIVE (Cockpit Voiture Autonome 3D en navigation active)
           if (screenState == MapScreenState.activeNavigation && isRadarView)
@@ -2768,15 +2874,65 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
   }
 
-  Widget _buildActiveNavigationTopBar() {
+  ({String distanceText, String instructionText, IconData iconData})
+      _liveManeuverDisplay({required String activeLang}) {
     final currentEnriched = ref.watch(currentEnrichedManeuverProvider);
+    final route = ref.watch(activeRouteProvider).value;
+    final stepIdx = ref.watch(currentManeuverIndexProvider);
+
+    if (_lastNavUpdate?.state == NavState.arrived) {
+      final arrText = activeLang == 'mos'
+          ? 'Y taame y zĩigẽ !'
+          : (activeLang == 'diu'
+              ? 'I sera i yɔrɔ la !'
+              : 'Vous êtes arrivé à destination');
+      return (
+        distanceText: '0 m',
+        instructionText: arrText,
+        iconData: Icons.flag_rounded,
+      );
+    }
+
+    if (_guideSteps.isNotEmpty) {
+      final idx = stepIdx.clamp(0, _guideSteps.length - 1);
+      final step = _guideSteps[idx];
+      final rawRemainingToTurn = _lastNavUpdate != null
+          ? math.max(0.0, step.along - _lastNavUpdate!.along)
+          : (step.along > 0 ? step.along : step.distanceMeters);
+      final displayMeters = rawRemainingToTurn >= 200.0
+          ? ((rawRemainingToTurn / 10.0).round() * 10.0)
+          : rawRemainingToTurn;
+      final distText = displayMeters >= 1000.0
+          ? '${(displayMeters / 1000.0).toStringAsFixed(1)} km'
+          : '${displayMeters.round()} m';
+      final instText = step.spoken(dist: displayMeters, language: activeLang);
+      return (
+        distanceText: distText,
+        instructionText: instText,
+        iconData: step.iconData,
+      );
+    }
+
+    return (
+      distanceText: currentEnriched?.distanceFormatted ??
+          (route?.maneuvers.isNotEmpty == true
+              ? '${route!.maneuvers.first.distanceMeters.round()} m'
+              : '300 m'),
+      instructionText: currentEnriched?.localizedInstruction ??
+          (route?.maneuvers.isNotEmpty == true
+              ? route!.maneuvers.first.instruction
+              : 'Suivre l\'axe principal'),
+      iconData: currentEnriched?.iconData ?? Icons.navigation_rounded,
+    );
+  }
+
+  Widget _buildActiveNavigationTopBar() {
     final activeLang = ref.watch(guidanceLanguageProvider);
     final selectedMode = ref.watch(selectedRouteModeProvider);
-
-    final instructionText =
-        currentEnriched?.localizedInstruction ?? 'Suivre l\'axe principal';
-    final distanceText = currentEnriched?.distanceFormatted ?? '200 m';
-    final iconData = currentEnriched?.iconData ?? Icons.navigation_rounded;
+    final live = _liveManeuverDisplay(activeLang: activeLang);
+    final instructionText = live.instructionText;
+    final distanceText = live.distanceText;
+    final iconData = live.iconData;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -3131,16 +3287,28 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           ),
         ];
 
+        final selectedRouteNow = routes[selectedMode] ?? fallbackActive;
+        final routeAlts = _currentRouteAlternatives.isNotEmpty
+            ? _currentRouteAlternatives
+            : (selectedRouteNow?.allOptions ?? const <RouteModel>[]);
+
         return RouteModeSelectorSheet(
           originName: currentLocation.label,
           destinationName: selectedPlace?.nom ?? 'Destination',
           options: options,
           selectedModeId: selectedMode,
+          alternativeRoutes: routeAlts,
+          selectedRoute: fallbackActive,
+          onAlternativeSelected: (chosen) {
+            _currentRouteAlternatives = routeAlts;
+            ref.read(activeRouteProvider.notifier).setRoute(chosen);
+          },
           onModeSelected: (modeId) {
             ref.read(selectedRouteModeProvider.notifier).selectMode(modeId);
             ref.read(mapServiceProvider).setTransportMode(modeId);
             final precalculated = routes[modeId];
             if (precalculated != null) {
+              _currentRouteAlternatives = precalculated.allOptions;
               ref.read(activeRouteProvider.notifier).setRoute(precalculated);
             } else if (selectedPlace != null) {
               final locService = ref.read(locationServiceProvider);
@@ -3189,19 +3357,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         final totalSteps = rawSteps < 1 ? 1 : rawSteps;
         final currentStep = (currentStepIndex + 1).clamp(1, totalSteps);
 
-        final nextInstruction = _lastNavUpdate?.state == NavState.arrived
-            ? 'Vous êtes arrivé à destination'
-            : (currentEnriched?.localizedInstruction ??
-                (route?.maneuvers.isNotEmpty == true
-                    ? route!.maneuvers.first.instruction
-                    : 'Suivre la voie principale'));
-
-        final distanceText = _lastNavUpdate?.state == NavState.arrived
-            ? '0 m'
-            : (currentEnriched?.distanceFormatted ??
-                (route?.maneuvers.isNotEmpty == true
-                    ? '${route!.maneuvers.first.distanceMeters.round()} m'
-                    : '300 m'));
+        final liveDisplay = _liveManeuverDisplay(activeLang: activeLang);
+        final nextInstruction = liveDisplay.instructionText;
+        final distanceText = liveDisplay.distanceText;
 
         final landmarkText =
             currentEnriched?.hasLandmark == true &&
@@ -3244,8 +3402,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         return ValueListenableBuilder<String>(
           valueListenable: voiceGuide.banner,
           builder: (context, bannerText, _) {
-            final effectiveInstruction =
-                bannerText.isNotEmpty ? bannerText : nextInstruction;
+            final effectiveInstruction = nextInstruction;
 
             final stepIdx = ref.watch(currentManeuverIndexProvider);
             final stepIcon = _lastNavUpdate?.state == NavState.arrived

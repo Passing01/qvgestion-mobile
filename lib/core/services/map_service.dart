@@ -21,7 +21,16 @@ abstract class MapService {
   Future<void> showPlaces(Map<String, dynamic> featureCollection);
   Map<String, dynamic>? get cachedPlacesGeoJson;
   MapLibreMapController? get controller;
-  Future<void> setRoute(RouteModel? route);
+  Future<void> setRoute(
+    RouteModel? route, {
+    bool fitCamera = true,
+    List<RouteModel> alternatives = const [],
+  });
+  Future<void> updateRouteProgress({
+    required double snappedLat,
+    required double snappedLon,
+    required int segmentIndex,
+  });
   Future<void> clearRoute();
   Future<void> moveCamera({
     required double lat,
@@ -83,6 +92,8 @@ class MapLibreMapService implements MapService {
   static const String placesPointsLayerId = 'places-points';
   static const String placesLabelsLayerId = 'places-labels';
 
+  static const String altRoutesSourceId = 'alt-routes';
+  static const String altRoutesLayerId = 'alt-routes-line';
   static const String routeSourceId = 'route';
   static const String routeCasingLayerId = 'route-casing';
   static const String routeLayerId = 'route-line';
@@ -512,6 +523,30 @@ class MapLibreMapService implements MapService {
         enableInteraction: false,
       );
 
+      // 2.0 Itinéraires alternatifs proposés (traits secondaires gris-bleu style Google Maps / Waze)
+      await _safeAddGeoJsonSource(
+        c,
+        existingSources,
+        altRoutesSourceId,
+        _buildAltRoutesGeoJson(_cachedRoute, _cachedAlternatives),
+      );
+      await _safeAddLineLayer(
+        c,
+        existingLayers,
+        altRoutesSourceId,
+        altRoutesLayerId,
+        const LineLayerProperties(
+          lineColor: '#64748B',
+          lineWidth: 5.0,
+          lineOpacity: 0.72,
+          lineDasharray: [2.0, 1.5],
+          lineJoin: 'round',
+          lineCap: 'round',
+        ),
+        belowLayerId: placesPointsLayerId,
+        enableInteraction: false,
+      );
+
       // 2. Initialisation de la source et des couches de tracé d'itinéraire (liseré de contraste + intérieur)
       final routeGeoJson = _buildRouteGeoJson(_cachedRoute);
       await _safeAddGeoJsonSource(
@@ -825,9 +860,20 @@ class MapLibreMapService implements MapService {
     }
   }
 
+  List<RouteModel> _cachedAlternatives = const [];
+
   @override
-  Future<void> setRoute(RouteModel? route) async {
+  Future<void> setRoute(
+    RouteModel? route, {
+    bool fitCamera = true,
+    List<RouteModel> alternatives = const [],
+  }) async {
     _cachedRoute = route;
+    if (alternatives.isNotEmpty) {
+      _cachedAlternatives = alternatives;
+    } else if (route == null) {
+      _cachedAlternatives = const [];
+    }
     final c = _controller;
     if (c == null || !_layersConfigured) return;
 
@@ -837,13 +883,19 @@ class MapLibreMapService implements MapService {
     }
 
     try {
+      await c.setGeoJsonSource(
+        altRoutesSourceId,
+        _buildAltRoutesGeoJson(route, _cachedAlternatives),
+      );
       final geojson = _buildRouteGeoJson(route);
       final features = geojson['features'] as List;
       if (features.isNotEmpty) {
         final geom = features.first['geometry'] as Map<String, dynamic>;
         final coords = geom['coordinates'] as List;
         await c.setGeoJsonSource(routeSourceId, geojson);
-        await _fitToRoute(coords);
+        if (fitCamera) {
+          await _fitToRoute(coords);
+        }
       }
     } catch (e) {
       AppLogger.w('Mise à jour tracé itinéraire MapLibre: $e');
@@ -851,12 +903,38 @@ class MapLibreMapService implements MapService {
   }
 
   @override
+  Future<void> updateRouteProgress({
+    required double snappedLat,
+    required double snappedLon,
+    required int segmentIndex,
+  }) async {
+    final route = _cachedRoute;
+    final c = _controller;
+    if (c == null || !_layersConfigured || route == null || route.geometry.length < 2) {
+      return;
+    }
+    try {
+      final geojson = _buildRouteGeoJson(
+        route,
+        startPointOverride: [snappedLon, snappedLat],
+        fromSegmentIndex: segmentIndex,
+      );
+      await c.setGeoJsonSource(routeSourceId, geojson);
+    } catch (_) {}
+  }
+
+  @override
   Future<void> clearRoute() async {
     _cachedRoute = null;
+    _cachedAlternatives = const [];
     final c = _controller;
     if (c == null || !_layersConfigured) return;
 
     try {
+      await c.setGeoJsonSource(altRoutesSourceId, const {
+        'type': 'FeatureCollection',
+        'features': [],
+      });
       await c.setGeoJsonSource(routeSourceId, const {
         'type': 'FeatureCollection',
         'features': [],
@@ -1308,23 +1386,72 @@ class MapLibreMapService implements MapService {
     }
   }
 
-  Map<String, dynamic> _buildRouteGeoJson(RouteModel? route) {
+  Map<String, dynamic> _buildAltRoutesGeoJson(
+    RouteModel? activeRoute,
+    List<RouteModel> alternatives,
+  ) {
+    if (activeRoute == null || alternatives.length <= 1) {
+      return const {'type': 'FeatureCollection', 'features': []};
+    }
+    final features = <Map<String, dynamic>>[];
+    for (final alt in alternatives) {
+      if (alt.distanceMeters == activeRoute.distanceMeters &&
+          alt.durationSeconds == activeRoute.durationSeconds &&
+          alt.geometry.length == activeRoute.geometry.length) {
+        continue;
+      }
+      final coords = <List<double>>[];
+      for (final pt in alt.geometry) {
+        if (pt.length >= 2 && pt[0].isFinite && pt[1].isFinite) {
+          final lon = pt[0] < 5.0 ? pt[0].toDouble() : pt[1].toDouble();
+          final lat = pt[1] > 8.0 ? pt[1].toDouble() : pt[0].toDouble();
+          coords.add([lon, lat]);
+        }
+      }
+      if (coords.length >= 2) {
+        features.add({
+          'type': 'Feature',
+          'geometry': {'type': 'LineString', 'coordinates': coords},
+          'properties': {'distance': alt.distanceMeters},
+        });
+      }
+    }
+    return {'type': 'FeatureCollection', 'features': features};
+  }
+
+  Map<String, dynamic> _buildRouteGeoJson(
+    RouteModel? route, {
+    List<double>? startPointOverride,
+    int? fromSegmentIndex,
+  }) {
     if (route == null || route.geometry.length < 2) {
       return const {'type': 'FeatureCollection', 'features': []};
     }
 
-    final coords = <List<double>>[];
+    final rawCoords = <List<double>>[];
     for (final pt in route.geometry) {
       if (pt.length >= 2 && pt[0].isFinite && pt[1].isFinite) {
         // En GeoJSON standard : [longitude, latitude]
         final lon = pt[0] < 5.0 ? pt[0].toDouble() : pt[1].toDouble();
         final lat = pt[1] > 8.0 ? pt[1].toDouble() : pt[0].toDouble();
-        coords.add([lon, lat]);
+        rawCoords.add([lon, lat]);
       }
     }
 
-    final features = <Map<String, dynamic>>[
-      {
+    final coords = <List<double>>[];
+    if (startPointOverride != null &&
+        fromSegmentIndex != null &&
+        fromSegmentIndex >= 0 &&
+        fromSegmentIndex + 1 < rawCoords.length) {
+      coords.add(startPointOverride);
+      coords.addAll(rawCoords.sublist(fromSegmentIndex + 1));
+    } else {
+      coords.addAll(rawCoords);
+    }
+
+    final features = <Map<String, dynamic>>[];
+    if (coords.length >= 2) {
+      features.add({
         'type': 'Feature',
         'geometry': {'type': 'LineString', 'coordinates': coords},
         'properties': {
@@ -1332,8 +1459,8 @@ class MapLibreMapService implements MapService {
           'distance': route.distanceMeters,
           'is_walk': false,
         },
-      },
-    ];
+      });
+    }
 
     if (route.walkingSegment != null && route.walkingSegment!.length >= 2) {
       final walkCoords = <List<double>>[];

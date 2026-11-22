@@ -126,11 +126,14 @@ class GuideStep {
   String _spokenFr(double dist) {
     final effectiveAnchor = nameTts ?? anchorName;
     final dInt = dist.toInt();
+    final distPhrase = dist >= 1000.0
+        ? '${(dist / 1000.0).toStringAsFixed(1)} km'
+        : '$dInt mètres';
     final action = _actionFr(maneuverType);
 
     if (maneuverType == 'arrive') {
       return dist >= 100.0
-          ? 'Dans $dInt mètres, vous arriverez à destination'
+          ? 'Dans $distPhrase, vous arriverez à destination'
           : 'Vous arrivez à destination';
     }
     if (maneuverType == 'depart') {
@@ -141,11 +144,11 @@ class GuideStep {
     if (confidence >= 2 && effectiveAnchor != null && effectiveAnchor.isNotEmpty) {
       if (anchorType == 'traffic_signal' || anchorType == 'feu') {
         return dist >= 100.0
-            ? 'Dans $dInt mètres, au feu, $action'
+            ? 'Dans $distPhrase, au feu, $action'
             : 'Au feu, $action';
       } else {
         return dist >= 100.0
-            ? 'Dans $dInt mètres, après $effectiveAnchor, $action'
+            ? 'Dans $distPhrase, après $effectiveAnchor, $action'
             : 'Après $effectiveAnchor, $action';
       }
     }
@@ -154,9 +157,9 @@ class GuideStep {
     if (streetName != null &&
         streetName!.isNotEmpty &&
         !streetName!.toLowerCase().startsWith('unnamed')) {
-      return 'Dans $dInt mètres, $action sur $streetName';
+      return 'Dans $distPhrase, $action sur $streetName';
     }
-    return 'Dans $dInt mètres, $action';
+    return 'Dans $distPhrase, $action';
   }
 
   String _spokenMoore(double dist) {
@@ -618,6 +621,7 @@ class Announcer {
 }
 
 /// Transforme un itinéraire et sa géométrie en une séquence de [GuideStep] projetés
+/// de manière strictement croissante le long du tracé réel.
 List<GuideStep> buildGuideSteps({
   required RouteModel route,
   EnrichedRouteModel? enrichedRoute,
@@ -625,10 +629,21 @@ List<GuideStep> buildGuideSteps({
 }) {
   final geom = RouteGeometry.fromRoute(route);
   final steps = <GuideStep>[];
+  int? lastSegmentHint;
+  double prevAlong = 0.0;
 
   for (var i = 0; i < route.maneuvers.length; i++) {
     final m = route.maneuvers[i];
-    final proj = geom.project(LatLng(m.location.lat, m.location.lon));
+    final proj = geom.project(
+      LatLng(m.location.lat, m.location.lon),
+      hintSegment: lastSegmentHint,
+      windowRadius: 60,
+    );
+    final stepAlong = proj.along >= prevAlong ? proj.along : prevAlong;
+    if (proj.along >= prevAlong) {
+      lastSegmentHint = proj.segmentIndex;
+      prevAlong = stepAlong;
+    }
 
     final enriched = (enrichedRoute != null && i < enrichedRoute.enrichedManeuvers.length)
         ? enrichedRoute.enrichedManeuvers[i]
@@ -647,7 +662,7 @@ List<GuideStep> buildGuideSteps({
 
     steps.add(GuideStep(
       order: m.order,
-      along: proj.along,
+      along: stepAlong,
       instruction: enriched?.localizedInstruction ?? m.instruction,
       maneuverType: m.maneuverType,
       streetName: m.streetName,
