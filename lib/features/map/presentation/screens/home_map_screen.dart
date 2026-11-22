@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -2237,8 +2238,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ),
                     ),
 
-                  // Bandeau Signal GPS perdu (Étape 6) : apparaît si aucun point depuis >10s
-                  if (gpsLost && _permissionOk)
+                  // Bandeau Signal GPS perdu (Étape 6) : actif sur mobile (>10s) ou en navigation Web (>45s)
+                  if (gpsLost &&
+                      _permissionOk &&
+                      (!kIsWeb || screenState == MapScreenState.activeNavigation))
                     Container(
                       key: const Key('banner_gps_lost'),
                       margin: const EdgeInsets.symmetric(

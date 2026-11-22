@@ -173,14 +173,18 @@ class LocationService {
       },
     );
 
-    // Watchdog : vérifie toutes les 2 secondes si le dernier point date de plus de 10 s
+    // Watchdog : vérifie périodiquement si le signal GPS est réellement perdu.
+    // Sur Web (kIsWeb), watchPosition n'émet pas à fréquence fixe à l'arrêt :
+    // on n'alerte donc qu'en navigation active après 45 s sans point.
     _watchdog?.cancel();
     _watchdog = Timer.periodic(const Duration(seconds: 2), (_) {
       final fixAt = DebugInfo.instance.lastFixAt;
       final age = fixAt == null
           ? 999
           : DateTime.now().difference(fixAt).inSeconds;
-      final isLost = age > 10;
+      final isLost = kIsWeb
+          ? (_navigationMode && fixAt != null && age > 45)
+          : (age > 10);
       if (isLost != gpsLost.value) {
         gpsLost.value = isLost;
         if (isLost) {
@@ -192,10 +196,13 @@ class LocationService {
     });
   }
 
-  /// Écarte les mauvais points pour la navigation : précision > 50 m ou âge > 10 s
+  /// Écarte les mauvais points pour la navigation :
+  /// sur mobile : précision <= 50 m et âge <= 10 s ; sur Web : tolérance Wi-Fi/navigateur.
   bool isUsable(Position p) {
     final age = DateTime.now().difference(p.timestamp).inSeconds.abs();
-    return p.accuracy <= 50 && age <= 10;
+    final maxAcc = kIsWeb ? 250.0 : 50.0;
+    final maxAge = kIsWeb ? 60 : 10;
+    return p.accuracy <= maxAcc && age <= maxAge;
   }
 
   /// Tolérance plus souple au démarrage (intérieur, ombre urbaine, navigateur Web)
