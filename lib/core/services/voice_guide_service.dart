@@ -469,8 +469,8 @@ class VoiceGuide {
     final dio = Dio(
       BaseOptions(
         responseType: ResponseType.bytes,
-        connectTimeout: const Duration(seconds: 4),
-        receiveTimeout: const Duration(seconds: 5),
+        connectTimeout: const Duration(milliseconds: 1200),
+        receiveTimeout: const Duration(milliseconds: 1500),
         validateStatus: (status) => status == 200,
       ),
     );
@@ -598,14 +598,24 @@ class Announcer {
   }) {
     for (var i = 0; i < steps.length; i++) {
       final d = steps[i].along - along; // mètres avant le virage
+      if (d < 5.0) continue;
+
+      // Évite de prononcer "200 mètres" en retard si l'usager est déjà passé sous 130 m
+      if (d < 130.0) {
+        _spoken.add('$i-200');
+      }
+
       for (final t in const [200.0, 50.0]) {
         final key = '$i-${t.toInt()}';
         if (d <= t && d > t - 40 && _spoken.add(key)) {
+          final spokenDist = t == 200.0
+              ? ((d >= 180.0 && d <= 210.0) ? 200.0 : (d / 10.0).round() * 10.0)
+              : ((d >= 35.0 && d <= 60.0) ? 50.0 : (d / 5.0).round() * 5.0);
           voice.say(
-            steps[i].spoken(dist: t, language: language),
-            audioSource: steps[i].audioFor(dist: t, language: language),
+            steps[i].spoken(dist: spokenDist, language: language),
+            audioSource: steps[i].audioFor(dist: spokenDist, language: language),
             language: language,
-            frenchFallbackText: steps[i].spoken(dist: t, language: 'fr'),
+            frenchFallbackText: steps[i].spoken(dist: spokenDist, language: 'fr'),
             maneuverType: steps[i].maneuverType,
           );
         }

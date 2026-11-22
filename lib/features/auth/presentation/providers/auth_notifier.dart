@@ -78,6 +78,58 @@ class AuthNotifier extends Notifier<AuthState> {
     }
   }
 
+  /// Indique si les identifiants OAuth du fournisseur sont configurés pour ce build
+  bool isOAuthConfigured(String provider) {
+    switch (provider.toLowerCase()) {
+      case 'google':
+        return const String.fromEnvironment('GOOGLE_CLIENT_ID').isNotEmpty;
+      case 'facebook':
+        return const String.fromEnvironment('FACEBOOK_APP_ID').isNotEmpty;
+      case 'apple':
+        return const String.fromEnvironment('APPLE_CLIENT_ID').isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  /// Lance le flux OAuth avec jeton vérifié côté backend
+  Future<bool> startOAuthFlow(
+    String provider, {
+    String? idToken,
+    String? accessToken,
+    String? nom,
+    String? email,
+  }) async {
+    if (idToken == null && accessToken == null) {
+      return false;
+    }
+    state = state.copyWith(status: AuthStatus.loading, errorMessage: null);
+    try {
+      final user = await _authRepository.oauthLogin(
+        provider: provider,
+        idToken: idToken,
+        accessToken: accessToken,
+        nom: nom,
+        email: email,
+      );
+      state = state.copyWith(
+        status: AuthStatus.authenticated,
+        user: user,
+        errorMessage: null,
+      );
+      return true;
+    } on ApiException catch (e) {
+      state = state.copyWith(status: AuthStatus.error, errorMessage: e.message);
+      return false;
+    } catch (_) {
+      state = state.copyWith(
+        status: AuthStatus.error,
+        errorMessage: 'Échec de la connexion sociale.',
+      );
+      return false;
+    }
+  }
+
   /// Connexion par numéro de téléphone ou email
   Future<bool> login({
     required String identifier,

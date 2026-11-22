@@ -2,6 +2,7 @@ class ApiEndpoints {
   // --- Authentification ---
   static const String register = '/auth/register';
   static const String login = '/auth/login';
+  static const String oauthLogin = '/auth/oauth';
   static const String refresh = '/auth/refresh';
 
   // --- Profil Utilisateur ---

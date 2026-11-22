@@ -183,10 +183,15 @@ class PlaceDetailSheet extends ConsumerWidget {
     final addressText = place.adresse ?? (place.quartier != null ? 'Quartier ${place.quartier}' : 'Ouagadougou');
     final hoursText = place.horaires ?? 'Horaires non renseignés';
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * 0.72,
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
         // 1. En-tête : Icône, Titre, Catégorie et bouton Fermer
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -265,7 +270,107 @@ class PlaceDetailSheet extends ConsumerWidget {
 
         const SizedBox(height: 14),
 
-        // 2. Détails : Adresse, Horaires, Téléphone
+        // 1.5 Galerie Photos & Vidéos (si renseignées)
+        if (place.photos.isNotEmpty || place.videos.isNotEmpty) ...[
+          SizedBox(
+            height: 120,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ...place.photos.map(
+                  (url) => Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: GestureDetector(
+                      onTap: () => _openExternalUrl(context, url),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Image.network(
+                          url,
+                          width: 170,
+                          height: 120,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, _, _) => Container(
+                            width: 170,
+                            height: 120,
+                            color: const Color(0xFFF1F5F9),
+                            child: const Icon(Icons.broken_image_outlined, color: Color(0xFF94A3B8)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                ...place.videos.map(
+                  (vUrl) => Padding(
+                    padding: const EdgeInsets.only(right: 10),
+                    child: InkWell(
+                      onTap: () => _openExternalUrl(context, vUrl),
+                      borderRadius: BorderRadius.circular(14),
+                      child: Container(
+                        width: 150,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF0F172A),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 38),
+                            SizedBox(height: 6),
+                            Text(
+                              'Voir la vidéo',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
+
+        // 1.6 Note, Avis & Gamme de prix (style Google Maps)
+        if (place.noteMoyenne != null || place.gammePrix != null) ...[
+          Row(
+            children: [
+              if (place.noteMoyenne != null) ...[
+                const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  place.noteMoyenne!.toStringAsFixed(1),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
+                ),
+                Text(
+                  ' (${place.nombreAvis} avis)',
+                  style: const TextStyle(color: Color(0xFF64748B), fontSize: 12.5),
+                ),
+              ],
+              if (place.noteMoyenne != null && place.gammePrix != null)
+                const Text('  ·  ', style: TextStyle(color: Color(0xFF94A3B8))),
+              if (place.gammePrix != null && place.gammePrix!.isNotEmpty)
+                Text(
+                  place.gammePrix!,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF334155),
+                    fontSize: 12.5,
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+
+        // 2. Détails : Adresse, Horaires, Téléphone, Description
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -274,6 +379,7 @@ class PlaceDetailSheet extends ConsumerWidget {
             border: Border.all(color: const Color(0xFFF1F5F9)),
           ),
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildInfoRow(
                 icon: Icons.location_on_outlined,
@@ -298,9 +404,104 @@ class PlaceDetailSheet extends ConsumerWidget {
                   isPhone: true,
                 ),
               ],
+              if (place.description != null && place.description!.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  place.description!.trim(),
+                  style: const TextStyle(fontSize: 12.5, color: Color(0xFF475569), height: 1.35),
+                ),
+              ],
             ],
           ),
         ),
+
+        // 2.2 Services & Équipements
+        if (place.services.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: place.services
+                .map(
+                  (svc) => Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF0FDFA),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFCCFBF1)),
+                    ),
+                    child: Text(
+                      svc,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF0F766E),
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+
+        // 2.3 Réseaux sociaux & liens directs (WhatsApp, Site Web, Facebook, Instagram, TikTok, Email)
+        if (_hasAnySocialOrContactLink(place)) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              if (place.whatsapp != null && place.whatsapp!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'WhatsApp',
+                  icon: Icons.chat_rounded,
+                  color: const Color(0xFF16A34A),
+                  url: 'https://wa.me/${place.whatsapp!.replaceAll(RegExp(r'[^\d]'), '')}',
+                ),
+              if (place.siteWeb != null && place.siteWeb!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'Site Web',
+                  icon: Icons.language_rounded,
+                  color: const Color(0xFF2563EB),
+                  url: place.siteWeb!,
+                ),
+              if (place.facebookUrl != null && place.facebookUrl!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'Facebook',
+                  icon: Icons.facebook_rounded,
+                  color: const Color(0xFF1877F2),
+                  url: place.facebookUrl!,
+                ),
+              if (place.instagramUrl != null && place.instagramUrl!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'Instagram',
+                  icon: Icons.camera_alt_rounded,
+                  color: const Color(0xFFE1306C),
+                  url: place.instagramUrl!,
+                ),
+              if (place.tiktokUrl != null && place.tiktokUrl!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'TikTok',
+                  icon: Icons.music_note_rounded,
+                  color: const Color(0xFF0F172A),
+                  url: place.tiktokUrl!,
+                ),
+              if (place.email != null && place.email!.trim().isNotEmpty)
+                _buildSocialChip(
+                  context,
+                  label: 'Email',
+                  icon: Icons.mail_outline_rounded,
+                  color: const Color(0xFF475569),
+                  url: 'mailto:${place.email!.trim()}',
+                ),
+            ],
+          ),
+        ],
 
         const SizedBox(height: 12),
 
@@ -454,7 +655,53 @@ class PlaceDetailSheet extends ConsumerWidget {
           ],
         ),
       ],
+    ),
+    ),
     );
+  }
+
+  bool _hasAnySocialOrContactLink(PlaceModel p) =>
+      (p.whatsapp != null && p.whatsapp!.trim().isNotEmpty) ||
+      (p.siteWeb != null && p.siteWeb!.trim().isNotEmpty) ||
+      (p.facebookUrl != null && p.facebookUrl!.trim().isNotEmpty) ||
+      (p.instagramUrl != null && p.instagramUrl!.trim().isNotEmpty) ||
+      (p.tiktokUrl != null && p.tiktokUrl!.trim().isNotEmpty) ||
+      (p.email != null && p.email!.trim().isNotEmpty);
+
+  Widget _buildSocialChip(
+    BuildContext context, {
+    required String label,
+    required IconData icon,
+    required Color color,
+    required String url,
+  }) {
+    return ActionChip(
+      avatar: Icon(icon, size: 15, color: color),
+      label: Text(
+        label,
+        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
+      ),
+      backgroundColor: color.withValues(alpha: 0.08),
+      side: BorderSide(color: color.withValues(alpha: 0.25)),
+      onPressed: () => _openExternalUrl(context, url),
+    );
+  }
+
+  Future<void> _openExternalUrl(BuildContext context, String rawUrl) async {
+    final uriStr = rawUrl.startsWith('http') || rawUrl.startsWith('mailto:') || rawUrl.startsWith('tel:')
+        ? rawUrl
+        : 'https://$rawUrl';
+    try {
+      if (await canLaunchUrlString(uriStr)) {
+        await launchUrlString(uriStr, mode: LaunchMode.externalApplication);
+      } else if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lien : $uriStr')),
+        );
+      }
+    } catch (e) {
+      AppLogger.w('Impossible d\'ouvrir le lien $uriStr: $e');
+    }
   }
 
   Widget _buildModeQuickButton({

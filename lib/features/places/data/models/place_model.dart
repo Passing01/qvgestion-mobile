@@ -34,6 +34,20 @@ class PlaceModel extends Equatable {
   final Map<String, dynamic> tags; // {"de_garde": true, "open_24_7": true}
   final String? nameTts; // Correction phonétique pour synthèse vocale (Étape 9)
 
+  // Fiche enrichie type Google Maps (médias, réseaux sociaux, services, avis)
+  final List<String> photos;
+  final List<String> videos;
+  final String? siteWeb;
+  final String? email;
+  final String? whatsapp;
+  final String? facebookUrl;
+  final String? instagramUrl;
+  final String? tiktokUrl;
+  final List<String> services;
+  final double? noteMoyenne;
+  final int nombreAvis;
+  final String? gammePrix;
+
   const PlaceModel({
     required this.id,
     this.uuid,
@@ -60,6 +74,18 @@ class PlaceModel extends Equatable {
     this.source = 'admin',
     this.tags = const {},
     this.nameTts,
+    this.photos = const [],
+    this.videos = const [],
+    this.siteWeb,
+    this.email,
+    this.whatsapp,
+    this.facebookUrl,
+    this.instagramUrl,
+    this.tiktokUrl,
+    this.services = const [],
+    this.noteMoyenne,
+    this.nombreAvis = 0,
+    this.gammePrix,
   });
 
   factory PlaceModel.fromJson(Map<String, dynamic> json) {
@@ -150,7 +176,38 @@ class PlaceModel extends Equatable {
       source: (json['source'] as String?) ?? 'admin',
       tags: parsedTags,
       nameTts: (json['name_tts'] as String?) ?? (json['nameTts'] as String?),
+      photos: _parseStringList(json['photos'] ?? parsedTags['photos']),
+      videos: _parseStringList(json['videos'] ?? parsedTags['videos']),
+      siteWeb: (json['site_web'] as String?) ??
+          (parsedTags['website'] as String?) ??
+          (parsedTags['contact:website'] as String?),
+      email: (json['email'] as String?) ??
+          (parsedTags['email'] as String?) ??
+          (parsedTags['contact:email'] as String?),
+      whatsapp: (json['whatsapp'] as String?) ??
+          (parsedTags['whatsapp'] as String?) ??
+          (parsedTags['contact:whatsapp'] as String?),
+      facebookUrl: (json['facebook_url'] as String?) ??
+          (parsedTags['facebook'] as String?) ??
+          (parsedTags['contact:facebook'] as String?),
+      instagramUrl: (json['instagram_url'] as String?) ??
+          (parsedTags['instagram'] as String?) ??
+          (parsedTags['contact:instagram'] as String?),
+      tiktokUrl: (json['tiktok_url'] as String?) ??
+          (parsedTags['tiktok'] as String?) ??
+          (parsedTags['contact:tiktok'] as String?),
+      services: _parseStringList(json['services'] ?? parsedTags['services']),
+      noteMoyenne: (json['note_moyenne'] as num?)?.toDouble(),
+      nombreAvis: (json['nombre_avis'] as num?)?.toInt() ?? 0,
+      gammePrix: json['gamme_prix'] as String?,
     );
+  }
+
+  static List<String> _parseStringList(dynamic raw) {
+    if (raw is List) {
+      return raw.map((e) => e.toString().trim()).where((s) => s.isNotEmpty).toList();
+    }
+    return const [];
   }
 
   /// Convertit récursivement n'importe quel Map (y compris `_Map<Object?, Object?>` des plugins natifs)

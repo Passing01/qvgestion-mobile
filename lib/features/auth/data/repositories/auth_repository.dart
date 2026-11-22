@@ -10,6 +10,14 @@ import 'package:qvgestion_mobile/features/auth/data/models/user_model.dart';
 
 abstract class IAuthRepository {
   Future<UserModel> login({required String identifier, required String password});
+  Future<UserModel> oauthLogin({
+    required String provider,
+    String? idToken,
+    String? accessToken,
+    String? nom,
+    String? email,
+    String languePreferee = 'mos',
+  });
   Future<UserModel> register({
     required String nom,
     required String telephone,
@@ -70,6 +78,37 @@ class AuthRepository implements IAuthRepository {
           nom: identifier,
           telephone: identifier,
         );
+  }
+
+  @override
+  Future<UserModel> oauthLogin({
+    required String provider,
+    String? idToken,
+    String? accessToken,
+    String? nom,
+    String? email,
+    String languePreferee = 'mos',
+  }) async {
+    final response = await apiClient.post(
+      ApiEndpoints.oauthLogin,
+      data: {
+        'provider': provider,
+        if (idToken != null) 'id_token': idToken,
+        if (accessToken != null) 'access_token': accessToken,
+        if (nom != null) 'nom': nom,
+        if (email != null) 'email': email,
+        'langue_preferee': languePreferee,
+      },
+    );
+    final authResponse = AuthResponseModel.fromJson(
+      response.data as Map<String, dynamic>,
+    );
+    await tokenStorage.saveTokens(
+      accessToken: authResponse.accessToken,
+      refreshToken: authResponse.refreshToken,
+    );
+    await _cacheUser(authResponse.user);
+    return authResponse.user;
   }
 
   @override

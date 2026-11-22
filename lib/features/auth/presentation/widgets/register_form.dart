@@ -7,6 +7,7 @@ import 'package:qvgestion_mobile/core/widgets/buttons/app_primary_button.dart';
 import 'package:qvgestion_mobile/core/widgets/feedback/app_snackbar.dart';
 import 'package:qvgestion_mobile/features/auth/presentation/providers/auth_notifier.dart';
 import 'package:qvgestion_mobile/features/auth/presentation/widgets/language_selector_chips.dart';
+import 'package:qvgestion_mobile/features/auth/presentation/widgets/social_auth_buttons.dart';
 
 class RegisterForm extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
@@ -173,6 +174,7 @@ class _RegisterFormState extends ConsumerState<RegisterForm> {
             isLoading: authState.isLoading,
             onPressed: _handleSubmit,
           ),
+          SocialAuthButtons(onSuccess: widget.onSuccess),
         ],
       ),
     );

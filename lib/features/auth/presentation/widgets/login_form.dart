@@ -6,6 +6,7 @@ import 'package:qvgestion_mobile/core/utils/validators.dart';
 import 'package:qvgestion_mobile/core/widgets/buttons/app_primary_button.dart';
 import 'package:qvgestion_mobile/core/widgets/feedback/app_snackbar.dart';
 import 'package:qvgestion_mobile/features/auth/presentation/providers/auth_notifier.dart';
+import 'package:qvgestion_mobile/features/auth/presentation/widgets/social_auth_buttons.dart';
 
 class LoginForm extends ConsumerStatefulWidget {
   final VoidCallback onSuccess;
@@ -125,6 +126,7 @@ class _LoginFormState extends ConsumerState<LoginForm> {
             isLoading: authState.isLoading,
             onPressed: _handleSubmit,
           ),
+          SocialAuthButtons(onSuccess: widget.onSuccess),
         ],
       ),
     );

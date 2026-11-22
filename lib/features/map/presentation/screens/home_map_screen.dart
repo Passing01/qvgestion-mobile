@@ -274,13 +274,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               : pos.longitude;
           if (_following) {
             final navMode = ref.read(navigationViewModeProvider);
-            if (navMode == NavigationViewMode.buildings3d) {
+            final eyeFollow = navMode == NavigationViewMode.buildings3d ||
+                navMode == NavigationViewMode.radar;
+            if (eyeFollow) {
               ref.read(mapServiceProvider).animateCamera(
                     lat: displayLat,
                     lng: displayLon,
-                    zoom: 18.3,
+                    zoom: navMode == NavigationViewMode.radar ? 18.9 : 18.3,
                     bearing: _vehicleHeading,
-                    tilt: 64.0,
+                    tilt: navMode == NavigationViewMode.radar ? 65.0 : 64.0,
                   );
             } else {
               final c = _mapController ?? ref.read(mapServiceProvider).controller;
@@ -726,18 +728,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     final locService = ref.read(locationServiceProvider);
-    final lastGps = locService.last;
+    var lastGps = locService.last;
 
-    // Règle 1 : Sur appareil réel (hors test unitaire/widget et hors mode test), exiger un GPS utilisable
+    // Règle 1 : Sur appareil réel, rafraîchir le point GPS s'il est légèrement ancien avant de démarrer
     if (!_isUnderWidgetTest && !AppConfig.testMode) {
-      if (lastGps == null || !locService.isUsable(lastGps)) {
-        AppSnackbar.showError(
+      if (lastGps == null || !locService.isStartUsable(lastGps)) {
+        lastGps = await locService.refreshCurrentPosition();
+      }
+      if (!mounted) return;
+      if (lastGps != null && lastGps.accuracy > 150) {
+        AppSnackbar.showWarning(
           context,
-          title: 'Signal GPS insuffisant',
           message:
-              'Précision > 50 m ou signal de plus de 10 s. Placez-vous à ciel ouvert avant de démarrer.',
+              'Signal GPS modéré (±${lastGps.accuracy.round()} m) — guidage démarré.',
         );
-        return;
       }
     }
 
@@ -1084,17 +1088,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       ref
           .read(mapServiceProvider)
           .updateUserLocation(sample.latitude, sample.longitude);
-      if (_following &&
-          ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d) {
+      final isEyeNav =
+          ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d ||
+              ref.read(isRadarViewEnabledProvider);
+      if (_following && isEyeNav) {
         final now = DateTime.now();
         if (now.difference(_lastNavCameraUpdate) >= const Duration(milliseconds: 220)) {
           _lastNavCameraUpdate = now;
+          final isRadar = ref.read(isRadarViewEnabledProvider);
           ref.read(mapServiceProvider).animateCamera(
                 lat: sample.latitude,
                 lng: sample.longitude,
-                zoom: 18.3,
+                zoom: isRadar ? 18.9 : 18.3,
                 bearing: sample.bearingDeg,
-                tilt: 64.0,
+                tilt: isRadar ? 65.0 : 64.0,
               );
         }
       }
@@ -1722,20 +1729,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       });
     });
 
-    // Bascule fluide entre Navigation entre bâtiments 3D, Radar et Carte classique
+    // Bascule fluide entre Navigation entre bâtiments 3D, Radar (sur route entre bâtiments) et Carte classique
     ref.listen<NavigationViewMode>(navigationViewModeProvider, (prev, next) async {
       if (ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation) return;
       final pos = _vehiclePosition ??
           LatLng(ref.read(currentLocationProvider).lat, ref.read(currentLocationProvider).lon);
-      if (next == NavigationViewMode.buildings3d) {
+      if (next == NavigationViewMode.buildings3d || next == NavigationViewMode.radar) {
         final monuments = await ref.read(monuments3dGeoJsonProvider.future);
         await mapService.setMonuments3dGeoJson(monuments);
         await mapService.animateCamera(
           lat: pos.latitude,
           lng: pos.longitude,
-          zoom: 18.3,
+          zoom: next == NavigationViewMode.radar ? 18.9 : 18.3,
           bearing: _vehicleHeading,
-          tilt: 64.0,
+          tilt: next == NavigationViewMode.radar ? 65.0 : 64.0,
         );
       } else if (next == NavigationViewMode.mapTop) {
         await mapService.animateCamera(
@@ -1761,7 +1768,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final use3dStyleNow = !isSatellite &&
         (is3dMap ||
             (screenState == MapScreenState.activeNavigation &&
-                navViewMode == NavigationViewMode.buildings3d &&
+                (navViewMode == NavigationViewMode.buildings3d || isRadarView) &&
                 !isDark));
     final mapTheme = isSatellite
         ? MapTheme.satellite
@@ -1814,7 +1821,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             myLocationEnabled: _permissionOk,
             myLocationTrackingMode: (_following &&
                     !(screenState == MapScreenState.activeNavigation &&
-                        navViewMode == NavigationViewMode.buildings3d))
+                        (navViewMode == NavigationViewMode.buildings3d || isRadarView)))
                 ? maplibre.MyLocationTrackingMode.tracking
                 : maplibre.MyLocationTrackingMode.none,
             onCameraTrackingDismissed: () {

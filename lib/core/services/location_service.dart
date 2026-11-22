@@ -198,6 +198,30 @@ class LocationService {
     return p.accuracy <= 50 && age <= 10;
   }
 
+  /// Tolérance plus souple au démarrage (intérieur, ombre urbaine, navigateur Web)
+  bool isStartUsable(Position p) {
+    final age = DateTime.now().difference(p.timestamp).inSeconds.abs();
+    return p.accuracy <= 150 && age <= 30;
+  }
+
+  /// Force une lecture GPS fraîche ponctuelle avant de démarrer le guidage
+  Future<Position?> refreshCurrentPosition() async {
+    try {
+      final p = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 3),
+        ),
+      );
+      last = p;
+      DebugInfo.instance.updateGpsFix(p);
+      _ctrl.add(p);
+      return p;
+    } catch (_) {
+      return last;
+    }
+  }
+
   /// Arrête le flux et le watchdog
   void stop() {
     _sub?.cancel();

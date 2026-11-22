@@ -73,36 +73,40 @@ class _FasoRadarHudViewState extends State<FasoRadarHudView>
 
     return Container(
       key: const Key('faso_radar_hud_view'),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
+          stops: const [0.0, 0.22, 0.78, 1.0],
           colors: [
-            Color(0xFF040914),
-            Color(0xFF0A1931),
-            Color(0xFF0E2954),
+            const Color(0xFF040914).withValues(alpha: 0.72),
+            Colors.transparent,
+            Colors.transparent,
+            const Color(0xFF040914).withValues(alpha: 0.80),
           ],
         ),
       ),
       child: Stack(
         children: [
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _FasoRadarPainter(
-                    phase: _pulseController.value,
-                    vehiclePosition: widget.vehiclePosition,
-                    headingDeg: widget.vehicleHeadingDeg,
-                    speedKmh: widget.speedKmh,
-                    transportMode: widget.transportMode,
-                    route: widget.route,
-                    radarScene: widget.radarScene,
-                    activeReports: widget.activeReports,
-                  ),
-                );
-              },
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _pulseController,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _FasoRadarPainter(
+                      phase: _pulseController.value,
+                      vehiclePosition: widget.vehiclePosition,
+                      headingDeg: widget.vehicleHeadingDeg,
+                      speedKmh: widget.speedKmh,
+                      transportMode: widget.transportMode,
+                      route: widget.route,
+                      radarScene: widget.radarScene,
+                      activeReports: widget.activeReports,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
 
@@ -297,30 +301,29 @@ class _FasoRadarPainter extends CustomPainter {
     final egoBase = _project(size, 0, 0)?.offset ?? Offset(size.width * 0.5, size.height * 0.72);
     final horizonY = size.height * 0.25;
 
-    // 1. Lueur d'horizon atmosphérique
+    // 1. Liseré supérieur discret (laisse 100% visible la vraie route et les vrais bâtiments 3D dessous)
     final horizonPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
         colors: [
-          const Color(0xFF040914),
-          const Color(0xFF1D4ED8).withValues(alpha: 0.22),
-          const Color(0xFF0B1F44),
+          const Color(0xFF040914).withValues(alpha: 0.48),
+          Colors.transparent,
         ],
-        stops: const [0.0, 0.26, 0.48],
+        stops: const [0.0, 0.34],
       ).createShader(Rect.fromLTWH(0, 0, size.width, size.height));
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), horizonPaint);
 
-    // 2. Grille radar perspective (cercles de distance & lignes de sol)
+    // 2. Repères LiDAR subtils de distance sur la chaussée
     _drawPerspectiveGrid(canvas, size, egoBase, horizonY);
 
-    // 3. Ondes radar pulsées depuis le véhicule
+    // 3. Ondes radar pulsées depuis le véhicule sur le bitume réel
     _drawRadarWaves(canvas, size, egoBase);
 
-    // 4. Route réelle devant le conducteur (chaussée + voies + ruban de guidage)
+    // 4. Couloir AR lumineux sur la voie devant le conducteur
     _drawProjectedRoadAndCorridor(canvas, size);
 
-    // 5. Objets détectés : Monuments 3D, Feux/Échangeurs, Signalements, Trafic
+    // 5. Marqueurs AR détectés : Monuments 3D, Feux/Échangeurs, Signalements, Trafic
     _drawDetectedSceneObjects(canvas, size);
 
     // 6. Véhicule Ego 3D au premier plan
@@ -463,7 +466,7 @@ class _FasoRadarPainter extends CustomPainter {
     canvas.drawPath(
       roadPath,
       Paint()
-        ..color = const Color(0xFF102A4C).withValues(alpha: 0.92)
+        ..color = const Color(0xFF0EA5E9).withValues(alpha: 0.14)
         ..style = PaintingStyle.fill,
     );
 
@@ -530,39 +533,6 @@ class _FasoRadarPainter extends CustomPainter {
   }
 
   void _drawDetectedSceneObjects(Canvas canvas, Size size) {
-    // Bâtiments 3D bordant les deux côtés du couloir pour garder le contexte urbain réel
-    for (var side = -1; side <= 1; side += 2) {
-      for (var slot = 0; slot < 5; slot++) {
-        final rawZ = ((slot * 30.0) - (phase * 30.0) % 30.0) + 18.0;
-        final z = rawZ.clamp(12.0, _maxRangeM - 10.0);
-        final lateralM = side * (16.5 + (slot % 2) * 3.5);
-        final proj = _project(size, lateralM, z);
-        if (proj != null) {
-          final bHeight = ((16.0 + ((slot * 7) % 18)) * proj.scale).clamp(14.0, 88.0);
-          final bWidth = (22.0 * proj.scale).clamp(10.0, 44.0);
-          final bRect = Rect.fromLTWH(
-            proj.offset.dx - bWidth / 2,
-            proj.offset.dy - bHeight,
-            bWidth,
-            bHeight,
-          );
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(bRect, const Radius.circular(3)),
-            Paint()
-              ..color = const Color(0xFF1E293B).withValues(alpha: 0.78)
-              ..style = PaintingStyle.fill,
-          );
-          canvas.drawRRect(
-            RRect.fromRectAndRadius(bRect, const Radius.circular(3)),
-            Paint()
-              ..color = const Color(0xFF38BDF8).withValues(alpha: 0.28)
-              ..strokeWidth = 1.0
-              ..style = PaintingStyle.stroke,
-          );
-        }
-      }
-    }
-
     final scene = radarScene;
     if (scene != null) {
       // Monuments 3D à l'horizon
