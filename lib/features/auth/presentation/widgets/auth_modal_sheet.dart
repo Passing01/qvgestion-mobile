@@ -17,6 +17,7 @@ class AuthModalSheet extends ConsumerStatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 480),
       builder: (context) => const AuthModalSheet(),
     );
   }

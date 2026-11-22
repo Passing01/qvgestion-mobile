@@ -43,6 +43,7 @@ class PlacesSearchSheet extends ConsumerStatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 520),
       builder: (context) => PlacesSearchSheet(
         onPlaceSelected: (result) => Navigator.of(context).pop(result),
       ),

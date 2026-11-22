@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
@@ -109,7 +109,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   List<GuideStep> _guideSteps = [];
 
   // Interpolation fluide 60 FPS & Scène Radar Live
-  final SmoothMotionInterpolator _motionInterpolator = SmoothMotionInterpolator();
+  final SmoothMotionInterpolator _motionInterpolator =
+      SmoothMotionInterpolator();
   Timer? _smoothMotionTimer;
   DateTime _lastRadarSceneFetch = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastNavCameraUpdate = DateTime.fromMillisecondsSinceEpoch(0);
@@ -119,7 +120,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
   static bool get _isUnderWidgetTest {
     final binding = WidgetsBinding.instance.runtimeType.toString();
-    return binding.contains('Test') || const bool.fromEnvironment('FLUTTER_TEST_RUNNER');
+    return binding.contains('Test') ||
+        const bool.fromEnvironment('FLUTTER_TEST_RUNNER');
   }
 
   LatLng? get vehiclePosition => _vehiclePosition;
@@ -161,7 +163,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     if (_isUnderWidgetTest) return;
     final intentService = ref.read(locationIntentServiceProvider);
     _locationIntentSub?.cancel();
-    _locationIntentSub = intentService.stream.listen(_handleIncomingLocationLink);
+    _locationIntentSub = intentService.stream.listen(
+      _handleIncomingLocationLink,
+    );
     await intentService.start();
   }
 
@@ -191,7 +195,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     } else if (link.searchQuery != null && link.searchQuery!.isNotEmpty) {
       try {
         final loc = ref.read(currentLocationProvider);
-        final results = await ref.read(placesRepositoryProvider).searchPlaces(
+        final results = await ref
+            .read(placesRepositoryProvider)
+            .searchPlaces(
               query: link.searchQuery!,
               currentLat: loc.lat,
               currentLon: loc.lon,
@@ -252,11 +258,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _gpsTrackingSub = locationService.stream.listen((pos) {
         if (!locationService.isUsable(pos)) return;
         final isActiveNav =
-            ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
-                _navEngine != null;
+            ref.read(mapScreenStateProvider) ==
+                MapScreenState.activeNavigation &&
+            _navEngine != null;
 
         if (isActiveNav) {
-          final speedKmh = pos.speed.isFinite && pos.speed > 0 ? pos.speed * 3.6 : 0.0;
+          final speedKmh = pos.speed.isFinite && pos.speed > 0
+              ? pos.speed * 3.6
+              : 0.0;
           if (pos.speed > 0.8 && pos.heading.isFinite && pos.heading >= 0) {
             _vehicleHeading = pos.heading;
           }
@@ -267,18 +276,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             DateTime.now(),
           );
           final snapped = _lastNavUpdate?.snappedPoint;
-          final displayLat = (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+          final displayLat =
+              (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
               ? snapped.latitude
               : pos.latitude;
-          final displayLon = (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+          final displayLon =
+              (snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
               ? snapped.longitude
               : pos.longitude;
           if (_following) {
             final navMode = ref.read(navigationViewModeProvider);
-            final eyeFollow = navMode == NavigationViewMode.buildings3d ||
+            final eyeFollow =
+                navMode == NavigationViewMode.buildings3d ||
                 navMode == NavigationViewMode.radar;
             if (eyeFollow) {
-              ref.read(mapServiceProvider).animateCamera(
+              ref
+                  .read(mapServiceProvider)
+                  .animateCamera(
                     lat: displayLat,
                     lng: displayLon,
                     zoom: navMode == NavigationViewMode.radar ? 18.9 : 18.3,
@@ -286,7 +300,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     tilt: navMode == NavigationViewMode.radar ? 65.0 : 64.0,
                   );
             } else {
-              final c = _mapController ?? ref.read(mapServiceProvider).controller;
+              final c =
+                  _mapController ?? ref.read(mapServiceProvider).controller;
               c?.animateCamera(
                 maplibre.CameraUpdate.newLatLng(
                   maplibre.LatLng(displayLat, displayLon),
@@ -397,17 +412,25 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     final isNavBuildings3d =
         ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
-            ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d;
+        ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d;
     final snapped = _lastNavUpdate?.snappedPoint;
-    final targetLat = (isNavBuildings3d && snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+    final targetLat =
+        (isNavBuildings3d &&
+            snapped != null &&
+            (_lastNavUpdate?.off ?? 999) <= 30.0)
         ? snapped.latitude
         : p.latitude;
-    final targetLon = (isNavBuildings3d && snapped != null && (_lastNavUpdate?.off ?? 999) <= 30.0)
+    final targetLon =
+        (isNavBuildings3d &&
+            snapped != null &&
+            (_lastNavUpdate?.off ?? 999) <= 30.0)
         ? snapped.longitude
         : p.longitude;
 
     if (isNavBuildings3d) {
-      await ref.read(mapServiceProvider).animateCamera(
+      await ref
+          .read(mapServiceProvider)
+          .animateCamera(
             lat: targetLat,
             lng: targetLon,
             zoom: 18.3,
@@ -478,9 +501,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       for (final f in features) {
         if (f is Map) {
           try {
-            final p = PlaceModel.fromGeoJsonFeature(Map<dynamic, dynamic>.from(f));
+            final p = PlaceModel.fromGeoJsonFeature(
+              Map<dynamic, dynamic>.from(f),
+            );
             if (onlyDeGarde) {
-              final isPharmacie = (p.categorie?.slug ?? '').toLowerCase().contains('pharmacie') ||
+              final isPharmacie =
+                  (p.categorie?.slug ?? '').toLowerCase().contains(
+                    'pharmacie',
+                  ) ||
                   p.nom.toLowerCase().contains('pharmacie');
               if (isPharmacie && !p.isDeGarde) continue;
             }
@@ -542,7 +570,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   /// Étape 8 · Traite chaque point GPS (réel ou simulé en mode test) via NavigationEngine
-  void _processNavigationFix(LatLng pos, double accuracy, double speedKmh, DateTime now) {
+  void _processNavigationFix(
+    LatLng pos,
+    double accuracy,
+    double speedKmh,
+    DateTime now,
+  ) {
     final engine = _navEngine;
     if (engine == null) return;
 
@@ -563,8 +596,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     // Map-matching : recaler le marqueur sur l'axe du tracé si l'usager est bien sur la voie (<= 30 m)
-    final displayPos =
-        (u.snappedPoint != null && u.off <= 30.0) ? u.snappedPoint! : pos;
+    final displayPos = (u.snappedPoint != null && u.off <= 30.0)
+        ? u.snappedPoint!
+        : pos;
 
     // Alimentation de l'interpolateur 60 FPS et effacement progressif du trait bleu derrière le véhicule
     _motionInterpolator.pushTarget(
@@ -573,12 +607,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       bearingDeg: _vehicleHeading,
       speedKmh: speedKmh,
     );
-    ref.read(mapServiceProvider).updateUserLocation(
-          displayPos.latitude,
-          displayPos.longitude,
-        );
+    ref
+        .read(mapServiceProvider)
+        .updateUserLocation(displayPos.latitude, displayPos.longitude);
     if (!_isUnderWidgetTest) {
-      ref.read(mapServiceProvider).updateRouteProgress(
+      ref
+          .read(mapServiceProvider)
+          .updateRouteProgress(
             snappedLat: displayPos.latitude,
             snappedLon: displayPos.longitude,
             segmentIndex: u.segmentIndex,
@@ -597,7 +632,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     if (_guideSteps.isNotEmpty) {
       int targetIndex = _guideSteps.length - 1;
       for (var i = 0; i < _guideSteps.length; i++) {
-        if (i == 0 && _guideSteps.length > 1 && _guideSteps[0].maneuverType == 'depart') {
+        if (i == 0 &&
+            _guideSteps.length > 1 &&
+            _guideSteps[0].maneuverType == 'depart') {
           continue;
         }
         if (u.along < _guideSteps[i].along - 12.0) {
@@ -616,11 +653,15 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       _arrivalAnnounced = true;
       final arriveText = lang == 'mos'
           ? 'Y taame y zĩigẽ !'
-          : (lang == 'diu' ? 'I sera i yɔrɔ la !' : 'Vous êtes arrivé à destination !');
+          : (lang == 'diu'
+                ? 'I sera i yɔrɔ la !'
+                : 'Vous êtes arrivé à destination !');
       final arriveAudio = _guideSteps.isNotEmpty
           ? _guideSteps.last.audioFor(dist: 0, language: lang)
           : null;
-      ref.read(voiceGuideProvider).say(
+      ref
+          .read(voiceGuideProvider)
+          .say(
             arriveText,
             audioSource: arriveAudio,
             language: lang,
@@ -661,7 +702,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     final mode = ref.read(selectedRouteModeProvider);
-    final newRoute = await ref.read(activeRouteProvider.notifier).calculate(
+    final newRoute = await ref
+        .read(activeRouteProvider.notifier)
+        .calculate(
           origin: CoordinateModel(
             lat: currentPos.latitude,
             lon: currentPos.longitude,
@@ -690,10 +733,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           _rerouteErrorBanner = null;
         });
         final lang = ref.read(guidanceLanguageProvider);
-        final enriched = await ref.read(activeEnrichedRouteProvider.notifier).enrichRoute(
-              route: newRoute,
-              language: lang,
-            );
+        final enriched = await ref
+            .read(activeEnrichedRouteProvider.notifier)
+            .enrichRoute(route: newRoute, language: lang);
         _guideSteps = buildGuideSteps(
           route: newRoute,
           enrichedRoute: enriched,
@@ -707,8 +749,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _navEngine?.onRerouteFailed();
     setState(() {
       _isReroutingInFlight = false;
-      _rerouteErrorBanner =
-          'Recalcul impossible (réseau coupé). Maintien du tracé actuel, nouvel essai dans 10 s.';
+      _rerouteErrorBanner = 'Recalcul impossible (réseau coupé). Maintien du tracé actuel, nouvel essai dans 10 s.';
     });
   }
 
@@ -751,8 +792,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final userLatLng = lastGps != null
         ? LatLng(lastGps.latitude, lastGps.longitude)
         : (geom.pts.isNotEmpty && _isUnderWidgetTest
-            ? geom.pts.first
-            : LatLng(currentLoc.lat, currentLoc.lon));
+              ? geom.pts.first
+              : LatLng(currentLoc.lat, currentLoc.lon));
 
     // Règle 2 : Si l'utilisateur est à plus de 150 m du tracé au démarrage, proposer de recalculer
     if (NavigationEngine.isStartFarFromRoute(geom, userLatLng)) {
@@ -761,10 +802,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
           title: const Row(
             children: [
-              Icon(Icons.wrong_location_rounded, color: Color(0xFFD97706), size: 24),
+              Icon(
+                Icons.wrong_location_rounded,
+                color: Color(0xFFD97706),
+                size: 24,
+              ),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -804,7 +851,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       final destLon = selectedPlace?.longitude ?? destCoord?.longitude;
       if (destLat != null && destLon != null) {
         final mode = ref.read(selectedRouteModeProvider);
-        final recalculated = await ref.read(activeRouteProvider.notifier).calculate(
+        final recalculated = await ref
+            .read(activeRouteProvider.notifier)
+            .calculate(
               origin: CoordinateModel(
                 lat: userLatLng.latitude,
                 lon: userLatLng.longitude,
@@ -857,7 +906,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     // Premier calcul de progression immédiat au démarrage
     final initAcc = lastGps?.accuracy ?? 5.0;
-    final initSpeed = (lastGps != null && lastGps.speed.isFinite && lastGps.speed > 0)
+    final initSpeed =
+        (lastGps != null && lastGps.speed.isFinite && lastGps.speed > 0)
         ? lastGps.speed * 3.6
         : 0.0;
     _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
@@ -865,17 +915,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ref.read(mapScreenStateProvider.notifier).toActiveNavigation();
     if (lastGps != null) {
       setState(() => _following = true);
-      final isBuildings3d = ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d;
+      final isBuildings3d =
+          ref.read(navigationViewModeProvider) ==
+          NavigationViewMode.buildings3d;
       if (isBuildings3d) {
         final monuments = await ref.read(monuments3dGeoJsonProvider.future);
         await ref.read(mapServiceProvider).setMonuments3dGeoJson(monuments);
       }
-      ref.read(mapServiceProvider).animateCamera(
+      ref
+          .read(mapServiceProvider)
+          .animateCamera(
             lat: lastGps.latitude,
             lng: lastGps.longitude,
             zoom: isBuildings3d ? 18.3 : 17.0,
             bearing: isBuildings3d ? _vehicleHeading : null,
-            tilt: isBuildings3d ? 64.0 : (ref.read(is3dMapModeProvider) ? 52.0 : 0.0),
+            tilt: isBuildings3d
+                ? 64.0
+                : (ref.read(is3dMapModeProvider) ? 52.0 : 0.0),
           );
     }
 
@@ -893,7 +949,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       AppSnackbar.showSuccess(
         context,
         title: 'Guidage démarré',
-        message: 'Consignes vocales locales en ${activeLang.toUpperCase()} actives.',
+        message:
+            'Consignes vocales locales en ${activeLang.toUpperCase()} actives.',
       );
     }
   }
@@ -994,7 +1051,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       firstInstruction,
       audioSource: startAudio,
       language: activeLang,
-      frenchFallbackText: route.maneuvers.isNotEmpty ? route.maneuvers.first.instruction : null,
+      frenchFallbackText: route.maneuvers.isNotEmpty
+          ? route.maneuvers.first.instruction
+          : null,
     );
 
     // Règle 8 : La simulation alimente exactement le même NavigationEngine que le GPS réel
@@ -1090,14 +1149,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           .read(mapServiceProvider)
           .updateUserLocation(sample.latitude, sample.longitude);
       final isEyeNav =
-          ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d ||
-              ref.read(isRadarViewEnabledProvider);
+          ref.read(navigationViewModeProvider) ==
+              NavigationViewMode.buildings3d ||
+          ref.read(isRadarViewEnabledProvider);
       if (_following && isEyeNav) {
         final now = DateTime.now();
-        if (now.difference(_lastNavCameraUpdate) >= const Duration(milliseconds: 220)) {
+        if (now.difference(_lastNavCameraUpdate) >=
+            const Duration(milliseconds: 220)) {
           _lastNavCameraUpdate = now;
           final isRadar = ref.read(isRadarViewEnabledProvider);
-          ref.read(mapServiceProvider).animateCamera(
+          ref
+              .read(mapServiceProvider)
+              .animateCamera(
                 lat: sample.latitude,
                 lng: sample.longitude,
                 zoom: isRadar ? 18.9 : 18.3,
@@ -1710,7 +1773,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         await mapService.setMonuments3dGeoJson(monuments);
         await mapService.setCameraTilt(
           ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
-                  ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d
+                  ref.read(navigationViewModeProvider) ==
+                      NavigationViewMode.buildings3d
               ? 64.0
               : 52.0,
         );
@@ -1720,22 +1784,37 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     });
 
     // Mise à jour en direct si l'admin ajoute ou supprime un bâtiment 3D
-    ref.listen<AsyncValue<Map<String, dynamic>>>(monuments3dGeoJsonProvider, (_, next) {
+    ref.listen<AsyncValue<Map<String, dynamic>>>(monuments3dGeoJsonProvider, (
+      _,
+      next,
+    ) {
       next.whenData((geoJson) {
         if (ref.read(is3dMapModeProvider) ||
-            (ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
-                ref.read(navigationViewModeProvider) == NavigationViewMode.buildings3d)) {
+            (ref.read(mapScreenStateProvider) ==
+                    MapScreenState.activeNavigation &&
+                ref.read(navigationViewModeProvider) ==
+                    NavigationViewMode.buildings3d)) {
           mapService.setMonuments3dGeoJson(geoJson);
         }
       });
     });
 
     // Bascule fluide entre Navigation entre bâtiments 3D, Radar (sur route entre bâtiments) et Carte classique
-    ref.listen<NavigationViewMode>(navigationViewModeProvider, (prev, next) async {
-      if (ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation) return;
-      final pos = _vehiclePosition ??
-          LatLng(ref.read(currentLocationProvider).lat, ref.read(currentLocationProvider).lon);
-      if (next == NavigationViewMode.buildings3d || next == NavigationViewMode.radar) {
+    ref.listen<NavigationViewMode>(navigationViewModeProvider, (
+      prev,
+      next,
+    ) async {
+      if (ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation) {
+        return;
+      }
+      final pos =
+          _vehiclePosition ??
+          LatLng(
+            ref.read(currentLocationProvider).lat,
+            ref.read(currentLocationProvider).lon,
+          );
+      if (next == NavigationViewMode.buildings3d ||
+          next == NavigationViewMode.radar) {
         final monuments = await ref.read(monuments3dGeoJsonProvider.future);
         await mapService.setMonuments3dGeoJson(monuments);
         await mapService.animateCamera(
@@ -1792,7 +1871,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final gpsLost = ref.watch(gpsLostProvider);
     final currentLoc = ref.watch(currentLocationProvider);
     final radarScene = ref.watch(activeRadarSceneProvider);
-    final activeReports = ref.watch(activeReportsProvider).value ?? const <ReportModel>[];
+    final activeReports =
+        ref.watch(activeReportsProvider).value ?? const <ReportModel>[];
+    final screenSize = MediaQuery.sizeOf(context);
+    final isDesktop = screenSize.width >= 900.0;
 
     return Scaffold(
       body: Stack(
@@ -1812,93 +1894,99 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             },
             onPointerUp: (_) => _mapPointerDownPos = null,
             child: FasoMap(
-            key: const Key('faso_map_widget'),
-            styleUrl: styleUrl,
-            attributionText: attributionText,
-            myLocationEnabled: _permissionOk,
-            myLocationTrackingMode: (_following &&
-                    !(screenState == MapScreenState.activeNavigation &&
-                        (navViewMode == NavigationViewMode.buildings3d || isRadarView)))
-                ? maplibre.MyLocationTrackingMode.tracking
-                : maplibre.MyLocationTrackingMode.none,
-            onCameraTrackingDismissed: () {
-              if (mounted && _following) {
-                setState(() => _following = false);
-                AppLogger.i(
-                  '[MAP] Suivi caméra désactivé par déplacement manuel',
-                );
-              }
-            },
-            onCameraIdle: _onCameraIdle,
-            onStyleReady: (controller) async {
-              _mapController = controller;
-              mapService.attach(controller);
-              await mapService.setTransportMode(
-                screenState == MapScreenState.explore
-                    ? null
-                    : ref.read(selectedRouteModeProvider),
-              );
-              await mapService.setupLayers(theme: mapTheme);
-              final lastGps = ref.read(locationServiceProvider).last;
-              final loc = ref.read(currentLocationProvider);
-              final initLat = lastGps?.latitude ?? loc.lat;
-              final initLon = lastGps?.longitude ?? loc.lon;
-              await mapService.updateUserLocation(initLat, initLon);
-              final selPlace = ref.read(selectedPlaceProvider);
-              if (selPlace != null) {
-                await mapService.setSelectedPlace(selPlace);
-              }
-              final lastGeoJson = ref.read(placesStateProvider).lastGeoJson;
-              if ((lastGeoJson['features'] as List?)?.isNotEmpty == true) {
-                await mapService.showPlaces(lastGeoJson);
-              }
-              final route = ref.read(activeRouteProvider).value;
-              if (route != null) {
-                final isActiveNav =
-                    screenState == MapScreenState.activeNavigation;
-                await mapService.setRoute(
-                  route,
-                  fitCamera: !isActiveNav,
-                  alternatives: _currentRouteAlternatives,
-                );
-                if (isActiveNav &&
-                    _lastNavUpdate?.snappedPoint != null &&
-                    (_lastNavUpdate?.off ?? 999) <= 30.0) {
-                  await mapService.updateRouteProgress(
-                    snappedLat: _lastNavUpdate!.snappedPoint!.latitude,
-                    snappedLon: _lastNavUpdate!.snappedPoint!.longitude,
-                    segmentIndex: _lastNavUpdate!.segmentIndex,
+              key: const Key('faso_map_widget'),
+              styleUrl: styleUrl,
+              attributionText: attributionText,
+              myLocationEnabled: _permissionOk,
+              myLocationTrackingMode:
+                  (_following &&
+                      !(screenState == MapScreenState.activeNavigation &&
+                          (navViewMode == NavigationViewMode.buildings3d ||
+                              isRadarView)))
+                  ? maplibre.MyLocationTrackingMode.tracking
+                  : maplibre.MyLocationTrackingMode.none,
+              onCameraTrackingDismissed: () {
+                if (mounted && _following) {
+                  setState(() => _following = false);
+                  AppLogger.i(
+                    '[MAP] Suivi caméra désactivé par déplacement manuel',
                   );
                 }
-              }
-              if (use3dStyleNow) {
-                final monuments = await ref.read(monuments3dGeoJsonProvider.future).catchError(
-                      (_) => RadarSceneModel.buildFallbackMonumentsGeoJson(),
-                    );
-                await mapService.setMonuments3dGeoJson(monuments);
-                await mapService.setCameraTilt(
-                  screenState == MapScreenState.activeNavigation &&
-                          navViewMode == NavigationViewMode.buildings3d
-                      ? 64.0
-                      : 52.0,
+              },
+              onCameraIdle: _onCameraIdle,
+              onStyleReady: (controller) async {
+                _mapController = controller;
+                mapService.attach(controller);
+                await mapService.setTransportMode(
+                  screenState == MapScreenState.explore
+                      ? null
+                      : ref.read(selectedRouteModeProvider),
                 );
-              }
-              await _refreshPlaces();
-            },
-            onTap: (point, latLng) async {
-              await _handleMapTap(point, latLng);
-            },
-            onLongPress: (point, latLng) async {
-              await _handleMapLongPress(point, latLng);
-            },
-            onAttributionTap: () {
-              AboutCreditsModal.show(context);
-            },
-          ),
+                await mapService.setupLayers(theme: mapTheme);
+                final lastGps = ref.read(locationServiceProvider).last;
+                final loc = ref.read(currentLocationProvider);
+                final initLat = lastGps?.latitude ?? loc.lat;
+                final initLon = lastGps?.longitude ?? loc.lon;
+                await mapService.updateUserLocation(initLat, initLon);
+                final selPlace = ref.read(selectedPlaceProvider);
+                if (selPlace != null) {
+                  await mapService.setSelectedPlace(selPlace);
+                }
+                final lastGeoJson = ref.read(placesStateProvider).lastGeoJson;
+                if ((lastGeoJson['features'] as List?)?.isNotEmpty == true) {
+                  await mapService.showPlaces(lastGeoJson);
+                }
+                final route = ref.read(activeRouteProvider).value;
+                if (route != null) {
+                  final isActiveNav =
+                      screenState == MapScreenState.activeNavigation;
+                  await mapService.setRoute(
+                    route,
+                    fitCamera: !isActiveNav,
+                    alternatives: _currentRouteAlternatives,
+                  );
+                  if (isActiveNav &&
+                      _lastNavUpdate?.snappedPoint != null &&
+                      (_lastNavUpdate?.off ?? 999) <= 30.0) {
+                    await mapService.updateRouteProgress(
+                      snappedLat: _lastNavUpdate!.snappedPoint!.latitude,
+                      snappedLon: _lastNavUpdate!.snappedPoint!.longitude,
+                      segmentIndex: _lastNavUpdate!.segmentIndex,
+                    );
+                  }
+                }
+                if (use3dStyleNow) {
+                  final monuments = await ref
+                      .read(monuments3dGeoJsonProvider.future)
+                      .catchError(
+                        (_) => RadarSceneModel.buildFallbackMonumentsGeoJson(),
+                      );
+                  await mapService.setMonuments3dGeoJson(monuments);
+                  await mapService.setCameraTilt(
+                    screenState == MapScreenState.activeNavigation &&
+                            navViewMode == NavigationViewMode.buildings3d
+                        ? 64.0
+                        : 52.0,
+                  );
+                }
+                await _refreshPlaces();
+              },
+              onTap: (point, latLng) async {
+                await _handleMapTap(point, latLng);
+              },
+              onLongPress: (point, latLng) async {
+                await _handleMapLongPress(point, latLng);
+              },
+              onAttributionTap: () {
+                AboutCreditsModal.show(context);
+              },
+            ),
           ),
 
           // Bouton flottant "Recentrer" quand l'usager explore librement la carte pendant l'itinéraire
-          if (screenState == MapScreenState.activeNavigation && !_following && !isRadarView)
+          if (screenState == MapScreenState.activeNavigation &&
+              !_following &&
+              !isRadarView)
             Positioned(
               left: 16,
               bottom: 245,
@@ -1921,8 +2009,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           if (screenState == MapScreenState.activeNavigation && isRadarView)
             Positioned.fill(
               child: FasoRadarHudView(
-                vehiclePosition: _vehiclePosition ??
-                    LatLng(currentLoc.lat, currentLoc.lon),
+                vehiclePosition:
+                    _vehiclePosition ?? LatLng(currentLoc.lat, currentLoc.lon),
                 vehicleHeadingDeg: _vehicleHeading,
                 speedKmh: _currentSpeedKmh,
                 transportMode: ref.watch(selectedRouteModeProvider),
@@ -1937,69 +2025,37 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
             ),
 
-          // 1.1 BADGE FLOTTANT "Hors-ligne prêt" ou "Mode hors-ligne" dynamique
-          if (screenState != MapScreenState.activeNavigation)
+          // 1.1 BADGE FLOTTANT "Hors-ligne prêt" (Mobile uniquement en bas à gauche; sur Desktop déplacé en haut à droite)
+          if (screenState != MapScreenState.activeNavigation && !isDesktop)
             Positioned(
               left: 20,
               bottom: 300,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: placesState.isOffline
-                      ? const Color(0xFF0F172A)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: placesState.isOffline
-                        ? const Color(0xFF38BDF8)
-                        : const Color(0xFFE5E7EB),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.10),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ],
-                ),
+              child: _buildOfflineStatusPill(placesState),
+            ),
+
+          // 1.1b CONTRÔLES TOP-DROITE DESKTOP : Statut hors-ligne + sélecteur Cartes • 3D
+          if (isDesktop)
+            Positioned(
+              top: 16,
+              right: 16,
+              child: SafeArea(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(
-                      placesState.isOffline
-                          ? Icons.cloud_off_rounded
-                          : Icons.check_circle_rounded,
-                      color: placesState.isOffline
-                          ? const Color(0xFF38BDF8)
-                          : const Color(0xFF22C55E),
-                      size: 16,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      placesState.isOffline
-                          ? 'Hors-ligne (${placesState.count} lieux)'
-                          : 'Hors-ligne prêt',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: placesState.isOffline
-                            ? Colors.white
-                            : const Color(0xFF374151),
-                      ),
-                    ),
+                    if (screenState != MapScreenState.activeNavigation) ...[
+                      _buildOfflineStatusPill(placesState),
+                      const SizedBox(width: 10),
+                    ],
+                    _buildMapStyleSelectorPill(is3dMap),
                   ],
                 ),
               ),
             ),
 
-
           // 1.2 CONTRÔLES FLOTTANTS CARTE (Signalement, Centrage GPS - visible aussi en navigation Étape 8 Règle 6)
           Positioned(
             right: 16,
-            bottom: 190,
+            bottom: isDesktop ? 34 : 190,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -2012,7 +2068,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     decoration: BoxDecoration(
                       color: const Color(0xFFFEF2F2),
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFFCA5A5), width: 1.5),
+                      border: Border.all(
+                        color: const Color(0xFFFCA5A5),
+                        width: 1.5,
+                      ),
                       boxShadow: [
                         BoxShadow(
                           color: const Color(0xFFDC2626).withValues(alpha: 0.2),
@@ -2043,7 +2102,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       color: isSatellite ? AppColors.primary : Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: isSatellite ? AppColors.primary : const Color(0xFFE5E7EB),
+                        color: isSatellite
+                            ? AppColors.primary
+                            : const Color(0xFFE5E7EB),
                         width: 1.5,
                       ),
                       boxShadow: [
@@ -2056,7 +2117,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     ),
                     child: Icon(
                       Icons.satellite_alt_rounded,
-                      color: isSatellite ? Colors.white : const Color(0xFF4B5563),
+                      color: isSatellite
+                          ? Colors.white
+                          : const Color(0xFF4B5563),
                       size: 22,
                     ),
                   ),
@@ -2085,8 +2148,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ],
                     ),
                     child: Icon(
-                      isDark ? Icons.light_mode_rounded : Icons.dark_mode_rounded,
-                      color: isDark ? const Color(0xFFF59E0B) : const Color(0xFF4B5563),
+                      isDark
+                          ? Icons.light_mode_rounded
+                          : Icons.dark_mode_rounded,
+                      color: isDark
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFF4B5563),
                       size: 24,
                     ),
                   ),
@@ -2140,7 +2207,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       color: _following ? AppColors.primary : Colors.white,
                       shape: BoxShape.circle,
                       border: Border.all(
-                        color: _following ? AppColors.primary : const Color(0xFFE5E7EB),
+                        color: _following
+                            ? AppColors.primary
+                            : const Color(0xFFE5E7EB),
                         width: _following ? 2 : 1,
                       ),
                       boxShadow: [
@@ -2152,7 +2221,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ],
                     ),
                     child: Icon(
-                      _following ? Icons.gps_fixed_rounded : Icons.my_location_rounded,
+                      _following
+                          ? Icons.gps_fixed_rounded
+                          : Icons.my_location_rounded,
                       color: _following ? Colors.white : AppColors.primary,
                       size: 24,
                     ),
@@ -2164,48 +2235,92 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
           // 2. BANNIÈRE SUPÉRIEURE DE NAVIGATION ACTIVE (Voice Prompt & Commandes + Bandeau MODE TEST Règle 8)
           if (screenState == MapScreenState.activeNavigation)
-            SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (AppConfig.testMode)
-                    Container(
-                      key: const Key('banner_test_mode_nav'),
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 12),
-                      color: const Color(0xFFEA580C),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.science_rounded, size: 16, color: Colors.white),
-                          SizedBox(width: 6),
-                          Text(
-                            'MODE TEST ACTIF',
-                            style: TextStyle(
+            Positioned(
+              left: isDesktop ? 16 : 0,
+              right: isDesktop ? null : 0,
+              top: isDesktop ? 12 : 0,
+              width: isDesktop ? 420 : null,
+              child: SafeArea(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (AppConfig.testMode)
+                      Container(
+                        key: const Key('banner_test_mode_nav'),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 4,
+                          horizontal: 12,
+                        ),
+                        color: const Color(0xFFEA580C),
+                        child: const Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.science_rounded,
+                              size: 16,
                               color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              letterSpacing: 1.1,
                             ),
-                          ),
-                        ],
+                            SizedBox(width: 6),
+                            Text(
+                              'MODE TEST ACTIF',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                  _buildActiveNavigationTopBar(),
-                ],
+                    _buildActiveNavigationTopBar(),
+                  ],
+                ),
               ),
             ),
 
           // 2.1 BANNIÈRE COMPACTE D'APERÇU D'ITINÉRAIRE (Écran 2 : laisse la carte grande ouverte)
           if (screenState == MapScreenState.routeSelection)
-            SafeArea(child: _buildRoutePreviewTopBar(selectedPlace)),
+            Positioned(
+              left: isDesktop ? 16 : 0,
+              right: isDesktop ? null : 0,
+              top: isDesktop ? 12 : 0,
+              width: isDesktop ? 420 : null,
+              child: SafeArea(child: _buildRoutePreviewTopBar(selectedPlace)),
+            ),
 
           // 3. ÉLÉMENTS FLOTTANTS SUPÉRIEURS (FASO NAV Header, Search, Ticker, Category Pills)
           if (screenState == MapScreenState.explore)
-            SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+            Positioned(
+              left: isDesktop ? 16 : 0,
+              right: isDesktop ? null : 0,
+              top: isDesktop ? 12 : 0,
+              width: isDesktop ? 420 : null,
+              child: SafeArea(
+                child: Container(
+                  decoration: isDesktop
+                      ? BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.94),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: const Color(0xFFE2E8F0),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        )
+                      : null,
+                  padding: isDesktop
+                      ? const EdgeInsets.only(top: 6, bottom: 12)
+                      : null,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                   // Bandeau officiel MODE TEST bien visible (Tâche 11)
                   if (AppConfig.testMode)
                     Container(
@@ -2241,7 +2356,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   // Bandeau Signal GPS perdu (Étape 6) : actif sur mobile (>10s) ou en navigation Web (>45s)
                   if (gpsLost &&
                       _permissionOk &&
-                      (!kIsWeb || screenState == MapScreenState.activeNavigation))
+                      (!kIsWeb ||
+                          screenState == MapScreenState.activeNavigation))
                     Container(
                       key: const Key('banner_gps_lost'),
                       margin: const EdgeInsets.symmetric(
@@ -2412,9 +2528,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     onTap: () async {
                       final result = await PlacesSearchSheet.show(context);
                       if (result is PlaceModel) {
-                        ref
-                            .read(selectedPlaceProvider.notifier)
-                            .select(result);
+                        ref.read(selectedPlaceProvider.notifier).select(result);
                       } else if (result is RoutePlannerResult) {
                         await _launchMultiPointRoute(result);
                       }
@@ -2440,66 +2554,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   const WeatherTrafficTicker(),
                   const SizedBox(height: 8),
                   const FasoCategoryPills(),
-                  Padding(
-                    padding: const EdgeInsets.only(top: 8, right: 16),
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: GestureDetector(
-                        key: const Key('fab_map_style_selector'),
-                        onTap: () => MapStyleSelectorSheet.show(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: is3dMap
-                                ? const Color(0xFFD97706)
-                                : Colors.white.withValues(alpha: 0.96),
-                            borderRadius: BorderRadius.circular(22),
-                            border: Border.all(
-                              color: is3dMap
-                                  ? const Color(0xFFD97706)
-                                  : const Color(0xFFE5E7EB),
-                              width: 1.4,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.12),
-                                blurRadius: 10,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                is3dMap
-                                    ? Icons.view_in_ar_rounded
-                                    : Icons.layers_rounded,
-                                color: is3dMap
-                                    ? Colors.white
-                                    : const Color(0xFF1E293B),
-                                size: 18,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                is3dMap ? 'Faso 3D' : 'Cartes • 3D',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                  color: is3dMap
-                                      ? Colors.white
-                                      : const Color(0xFF1E293B),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                  if (!isDesktop)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, right: 16),
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _buildMapStyleSelectorPill(is3dMap),
                       ),
                     ),
-                  ),
 
                   // Compteur dynamique et bouton Liste triée par distance (Tâche 10)
                   if (selectedCats.isNotEmpty && placesState.count > 0)
@@ -2677,22 +2739,136 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
+          ),
 
           // 4. TIROIR / FEUILLE INFÉRIEURE CONTEXTUELLE CONFORME À LA MAQUETTE
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: _buildBottomContext(
-              selectedPlace: selectedPlace,
-              activeRouteState: activeRouteState,
-              screenState: screenState,
+          if (isDesktop)
+            Positioned(
+              left: 16,
+              bottom: 14,
+              width: 420,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: (screenSize.height -
+                          (screenState == MapScreenState.explore ? 275.0 : 130.0))
+                      .clamp(220.0, screenSize.height * 0.68),
+                ),
+                child: SingleChildScrollView(
+                  child: _buildBottomContext(
+                    selectedPlace: selectedPlace,
+                    activeRouteState: activeRouteState,
+                    screenState: screenState,
+                  ),
+                ),
+              ),
+            )
+          else
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: _buildBottomContext(
+                selectedPlace: selectedPlace,
+                activeRouteState: activeRouteState,
+                screenState: screenState,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOfflineStatusPill(dynamic placesState) {
+    final isOffline = placesState.isOffline == true;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: isOffline
+            ? const Color(0xFF0F172A)
+            : Colors.white.withValues(alpha: 0.96),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isOffline ? const Color(0xFF38BDF8) : const Color(0xFFE5E7EB),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.10),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isOffline ? Icons.cloud_off_rounded : Icons.check_circle_rounded,
+            color:
+                isOffline ? const Color(0xFF38BDF8) : const Color(0xFF22C55E),
+            size: 16,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            isOffline
+                ? 'Hors-ligne (${placesState.count} lieux)'
+                : 'Hors-ligne prêt',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: isOffline ? Colors.white : const Color(0xFF374151),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMapStyleSelectorPill(bool is3dMap) {
+    return GestureDetector(
+      key: const Key('fab_map_style_selector'),
+      onTap: () => MapStyleSelectorSheet.show(context),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: is3dMap
+              ? const Color(0xFFD97706)
+              : Colors.white.withValues(alpha: 0.96),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: is3dMap ? const Color(0xFFD97706) : const Color(0xFFE5E7EB),
+            width: 1.4,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.12),
+              blurRadius: 10,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              is3dMap ? Icons.view_in_ar_rounded : Icons.layers_rounded,
+              color: is3dMap ? Colors.white : const Color(0xFF1E293B),
+              size: 18,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              is3dMap ? 'Faso 3D' : 'Cartes • 3D',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: is3dMap ? Colors.white : const Color(0xFF1E293B),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -2771,7 +2947,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     return 'MOTO';
   }
 
-
   Widget _buildRoutePreviewTopBar(PlaceModel? selectedPlace) {
     final selectedMode = ref.watch(selectedRouteModeProvider);
     final activeRoute = ref.watch(activeRouteProvider).value;
@@ -2846,11 +3021,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           activeRoute.walkingDistanceMeters! > 15) ...[
                         const SizedBox(width: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                            color: const Color(0xFF10B981)
+                                .withValues(alpha: 0.25),
                             borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF10B981), width: 0.8),
+                            border: Border.all(
+                              color: const Color(0xFF10B981),
+                              width: 0.8,
+                            ),
                           ),
                           child: Text(
                             '+ ${activeRoute.walkingDistanceMeters!.round()} m à pied',
@@ -2896,7 +3078,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   }
 
   ({String distanceText, String instructionText, IconData iconData})
-      _liveManeuverDisplay({required String activeLang}) {
+  _liveManeuverDisplay({required String activeLang}) {
     final currentEnriched = ref.watch(currentEnrichedManeuverProvider);
     final route = ref.watch(activeRouteProvider).value;
     final stepIdx = ref.watch(currentManeuverIndexProvider);
@@ -2905,8 +3087,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       final arrText = activeLang == 'mos'
           ? 'Y taame y zĩigẽ !'
           : (activeLang == 'diu'
-              ? 'I sera i yɔrɔ la !'
-              : 'Vous êtes arrivé à destination');
+                ? 'I sera i yɔrɔ la !'
+                : 'Vous êtes arrivé à destination');
       return (
         distanceText: '0 m',
         instructionText: arrText,
@@ -2926,7 +3108,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       final distText = displayMeters >= 1000.0
           ? '${(displayMeters / 1000.0).toStringAsFixed(1)} km'
           : '${displayMeters.round()} m';
-      final instText = (step.maneuverType == 'depart' && step.instruction.isNotEmpty)
+      final instText =
+          (step.maneuverType == 'depart' && step.instruction.isNotEmpty)
           ? step.instruction
           : step.spoken(dist: displayMeters, language: activeLang);
       return (
@@ -2937,11 +3120,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     }
 
     return (
-      distanceText: currentEnriched?.distanceFormatted ??
+      distanceText:
+          currentEnriched?.distanceFormatted ??
           (route?.maneuvers.isNotEmpty == true
               ? '${route!.maneuvers.first.distanceMeters.round()} m'
               : '300 m'),
-      instructionText: currentEnriched?.localizedInstruction ??
+      instructionText:
+          currentEnriched?.localizedInstruction ??
           (route?.maneuvers.isNotEmpty == true
               ? route!.maneuvers.first.instruction
               : 'Suivre l\'axe principal'),
@@ -3066,8 +3251,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             },
             icon: Icon(
               Icons.location_city_rounded,
-              color: !ref.watch(isRadarViewEnabledProvider) &&
-                      ref.watch(navigationViewModeProvider) == NavigationViewMode.buildings3d
+              color:
+                  !ref.watch(isRadarViewEnabledProvider) &&
+                      ref.watch(navigationViewModeProvider) ==
+                          NavigationViewMode.buildings3d
                   ? const Color(0xFFFBBF24)
                   : Colors.white70,
               size: 22,
@@ -3400,22 +3587,28 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           liveRemainingDistance = remM >= 1000
               ? '${(remM / 1000).toStringAsFixed(1)} km'
               : '${remM.round()} m';
-          final totalM = _navEngine?.route.total ?? (route?.distanceMeters ?? 0);
+          final totalM =
+              _navEngine?.route.total ?? (route?.distanceMeters ?? 0);
           final baseDurS = route?.durationSeconds ?? 540;
           if (totalM > 0) {
             final remSec = (baseDurS * (remM / totalM)).round();
             final remMin = (remSec / 60).ceil();
-            liveRemainingTime = remM <= 25 ? '0 min' : '${math.max(1, remMin)} min';
+            liveRemainingTime = remM <= 25
+                ? '0 min'
+                : '${math.max(1, remMin)} min';
           } else {
-            liveRemainingTime = enrichedRoute?.totalDurationFormatted ??
+            liveRemainingTime =
+                enrichedRoute?.totalDurationFormatted ??
                 route?.durationFormatted ??
                 '9 min';
           }
         } else {
-          liveRemainingDistance = enrichedRoute?.distanceFormatted ??
+          liveRemainingDistance =
+              enrichedRoute?.distanceFormatted ??
               route?.distanceFormatted ??
               '4.8 km';
-          liveRemainingTime = enrichedRoute?.totalDurationFormatted ??
+          liveRemainingTime =
+              enrichedRoute?.totalDurationFormatted ??
               route?.durationFormatted ??
               '9 min';
         }
@@ -3431,8 +3624,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             final stepIcon = _lastNavUpdate?.state == NavState.arrived
                 ? Icons.flag_rounded
                 : (stepIdx < _guideSteps.length
-                    ? _guideSteps[stepIdx].iconData
-                    : (currentEnriched?.iconData ?? Icons.turn_right_rounded));
+                      ? _guideSteps[stepIdx].iconData
+                      : (currentEnriched?.iconData ??
+                            Icons.turn_right_rounded));
 
             return ActiveNavigationCard(
               nextManeuverText: effectiveInstruction,
@@ -3444,14 +3638,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               remainingDistance: liveRemainingDistance,
               speedKmh: _currentSpeedKmh,
               isRerouting:
-                  _lastNavUpdate?.state == NavState.rerouting || _isReroutingInFlight,
+                  _lastNavUpdate?.state == NavState.rerouting ||
+                  _isReroutingInFlight,
               rerouteError: _rerouteErrorBanner,
               isArrived: _lastNavUpdate?.state == NavState.arrived,
               activeLanguage: activeLang.toUpperCase(),
               currentStep: currentStep,
               totalSteps: totalSteps,
               onLanguageChanged: (newLang) async {
-                ref.read(guidanceLanguageProvider.notifier).setLanguage(newLang);
+                ref
+                    .read(guidanceLanguageProvider.notifier)
+                    .setLanguage(newLang);
                 if (route != null) {
                   final newEnriched = await ref
                       .read(activeEnrichedRouteProvider.notifier)
@@ -3472,18 +3669,20 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 }
               },
               onNextStep: () {
-                ref.read(currentManeuverIndexProvider.notifier).next(totalSteps);
+                ref
+                    .read(currentManeuverIndexProvider.notifier)
+                    .next(totalSteps);
                 final nextIdx = ref.read(currentManeuverIndexProvider);
                 final inst =
                     (enrichedRoute != null &&
                         nextIdx < enrichedRoute.enrichedManeuvers.length)
-                    ? enrichedRoute.enrichedManeuvers[nextIdx].localizedInstruction
+                    ? enrichedRoute
+                          .enrichedManeuvers[nextIdx]
+                          .localizedInstruction
                     : (route != null && nextIdx < route.maneuvers.length)
                     ? route.maneuvers[nextIdx].instruction
                     : nextInstruction;
-                ref
-                    .read(voiceGuideProvider)
-                    .say(inst, language: activeLang);
+                ref.read(voiceGuideProvider).say(inst, language: activeLang);
               },
               onPreviousStep: () {
                 ref.read(currentManeuverIndexProvider.notifier).previous();
@@ -3491,13 +3690,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 final inst =
                     (enrichedRoute != null &&
                         prevIdx < enrichedRoute.enrichedManeuvers.length)
-                    ? enrichedRoute.enrichedManeuvers[prevIdx].localizedInstruction
+                    ? enrichedRoute
+                          .enrichedManeuvers[prevIdx]
+                          .localizedInstruction
                     : (route != null && prevIdx < route.maneuvers.length)
                     ? route.maneuvers[prevIdx].instruction
                     : nextInstruction;
-                ref
-                    .read(voiceGuideProvider)
-                    .say(inst, language: activeLang);
+                ref.read(voiceGuideProvider).say(inst, language: activeLang);
               },
               onPlayVoice: () {
                 final textToPlay = voiceGuide.banner.value.isNotEmpty

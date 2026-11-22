@@ -226,6 +226,28 @@ void main() {
 
     expect(satBtn, findsOneWidget);
   });
+
+  testWidgets('Desktop Web (>= 900px) contraint le panneau à gauche et place les contrôles à droite',
+      (WidgetTester tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(createTestWidget());
+    await tester.pumpAndSettle();
+
+    final searchRect = tester.getRect(find.textContaining('Rechercher un lieu'));
+    expect(searchRect.width, lessThanOrEqualTo(420.0));
+
+    final styleRect = tester.getRect(find.byKey(const Key('fab_map_style_selector')));
+    expect(styleRect.left, greaterThan(1000.0));
+    expect(styleRect.top, lessThan(80.0));
+
+    final offlineRect = tester.getRect(find.textContaining('Hors-ligne'));
+    expect(offlineRect.left, greaterThan(900.0));
+    expect(offlineRect.top, lessThan(80.0));
+  });
 }
 
 
