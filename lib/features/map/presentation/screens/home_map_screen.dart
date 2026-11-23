@@ -2080,6 +2080,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 route: ref.watch(activeRouteProvider).value,
                 radarScene: radarScene,
                 activeReports: activeReports,
+                nearbyPlaces: placesState.placesList,
                 onSwitchToMap: () {
                   ref
                       .read(isRadarViewEnabledProvider.notifier)
