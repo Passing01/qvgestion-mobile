@@ -1008,9 +1008,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       if (!_isUnderWidgetTest) {
         final startIdx = ref.read(currentManeuverIndexProvider);
         unawaited(
-          Future<void>.delayed(const Duration(milliseconds: 2500), () {
+          Future<void>.delayed(const Duration(milliseconds: 2500), () async {
             if (!mounted) return;
-            return voiceGuide.prefetchSteps(
+            await voiceGuide.prefetchSteps(
               _guideSteps,
               language: activeLang,
               startIndex: startIdx,
