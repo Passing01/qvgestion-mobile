@@ -219,7 +219,7 @@ class LocationService {
           accuracy: LocationAccuracy.high,
           timeLimit: Duration(seconds: 3),
         ),
-      );
+      ).timeout(const Duration(seconds: 3));
       last = p;
       DebugInfo.instance.updateGpsFix(p);
       _ctrl.add(p);

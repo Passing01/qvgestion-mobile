@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:qvgestion_mobile/core/config/app_config.dart';
 import 'package:qvgestion_mobile/core/config/app_constants.dart';
 import 'package:qvgestion_mobile/core/debug/debug_info.dart';
+import 'package:qvgestion_mobile/core/errors/app_error_reporter.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
 import 'package:qvgestion_mobile/core/utils/app_logger.dart';
 import 'package:qvgestion_mobile/core/widgets/feedback/app_snackbar.dart';
@@ -755,37 +756,47 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
   /// Étape 8 · Règles 1 & 2 : Validation stricte et démarrage de la navigation
   Future<void> _startActiveNavigation() async {
-    var route = ref.read(activeRouteProvider).value;
-    if (route == null) {
-      AppSnackbar.showError(context, message: 'Aucun itinéraire disponible.');
-      return;
-    }
-
-    var geom = RouteGeometry.fromRoute(route);
-    // Règle 1 : Démarrage refusé si < 2 points ou < 50 m
-    final startErr = NavigationEngine.canStart(geom);
-    if (startErr != null) {
-      AppSnackbar.showError(context, message: startErr);
-      return;
-    }
-
-    final locService = ref.read(locationServiceProvider);
-    var lastGps = locService.last;
-
-    // Règle 1 : Sur appareil réel, rafraîchir le point GPS s'il est légèrement ancien avant de démarrer
-    if (!_isUnderWidgetTest && !AppConfig.testMode) {
-      if (lastGps == null || !locService.isStartUsable(lastGps)) {
-        lastGps = await locService.refreshCurrentPosition();
+    try {
+      final selectedModeStart = ref.read(selectedRouteModeProvider);
+      var route = ref.read(activeRouteProvider).value ??
+          ref.read(multiModeRoutesProvider).value?[selectedModeStart];
+      if (route == null) {
+        if (mounted) {
+          AppSnackbar.showError(
+            context,
+            message: 'Calcul d\'itinéraire en cours ou indisponible. Veuillez patienter ou réessayer.',
+          );
+        }
+        return;
       }
-      if (!mounted) return;
-      if (lastGps != null && lastGps.accuracy > 150) {
-        AppSnackbar.showWarning(
-          context,
-          message:
-              'Signal GPS modéré (±${lastGps.accuracy.round()} m) — guidage démarré.',
-        );
+
+      var geom = RouteGeometry.fromRoute(route);
+      // Règle 1 : Démarrage refusé si < 2 points ou < 50 m
+      final startErr = NavigationEngine.canStart(geom);
+      if (startErr != null) {
+        if (mounted) {
+          AppSnackbar.showError(context, message: startErr);
+        }
+        return;
       }
-    }
+
+      final locService = ref.read(locationServiceProvider);
+      var lastGps = locService.last;
+
+      // Règle 1 : Sur appareil réel (si permission GPS active), rafraîchir le point GPS avant de démarrer
+      if (!_isUnderWidgetTest && !AppConfig.testMode && (_permissionOk || !kIsWeb)) {
+        if (lastGps == null || !locService.isStartUsable(lastGps)) {
+          lastGps = await locService.refreshCurrentPosition();
+        }
+        if (!mounted) return;
+        if (lastGps != null && lastGps.accuracy > 150) {
+          AppSnackbar.showWarning(
+            context,
+            message:
+                'Signal GPS modéré (±${lastGps.accuracy.round()} m) — guidage démarré.',
+          );
+        }
+      }
 
     // Position de départ effective
     final currentLoc = ref.read(currentLocationProvider);
@@ -900,7 +911,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     ref.read(mapServiceProvider).setTransportMode(selectedModeNow);
 
     // Règle 7 : Activer le service de premier plan + WakeLock sur Android pendant la course
-    if (!_isUnderWidgetTest) {
+    if (!_isUnderWidgetTest && (_permissionOk || !kIsWeb)) {
       await locService.setNavigationMode(true);
     }
 
@@ -951,6 +962,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         title: 'Guidage démarré',
         message:
             'Consignes vocales locales en ${activeLang.toUpperCase()} actives.',
+      );
+    }
+    } catch (e, st) {
+      AppErrorReporter.reportError(
+        'Impossible de démarrer la navigation',
+        error: e,
+        stackTrace: st,
+        tag: 'NavigationStart',
       );
     }
   }
