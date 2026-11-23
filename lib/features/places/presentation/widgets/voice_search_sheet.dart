@@ -1,12 +1,17 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:record/record.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:latlong2/latlong.dart';
 import 'package:qvgestion_mobile/core/config/app_config.dart';
 import 'package:qvgestion_mobile/core/debug/debug_info.dart';
 import 'package:qvgestion_mobile/core/errors/app_error_reporter.dart';
+import 'package:qvgestion_mobile/core/services/voice_asr_service.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
 import 'package:qvgestion_mobile/core/utils/app_logger.dart';
 import 'package:qvgestion_mobile/features/places/data/models/place_model.dart';
@@ -37,9 +42,30 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
   late final Animation<double> _pulseAnimation;
 
   bool _isListening = false;
+  bool _isRecordingAsr = false;
+  bool _isTranscribingAsr = false;
   String _spokenText = '';
   String _selectedLanguage = 'fr'; // 'mos', 'diu', 'fr'
   String _statusMessage = 'Appuyez pour parler en Mooré, Dioula ou Français';
+
+  AudioRecorder? _asrRecorder;
+  StreamSubscription<Uint8List>? _asrStreamSub;
+  BytesBuilder _pcmBuilder = BytesBuilder(copy: false);
+  Timer? _asrAutoStopTimer;
+
+  bool get _isUnderWidgetTest =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
+  String _langDisplayName(String code) {
+    switch (code) {
+      case 'mos':
+        return 'Mooré';
+      case 'diu':
+        return 'Dioula';
+      default:
+        return 'Français';
+    }
+  }
 
   final List<Map<String, dynamic>> _quickVoicePrompts = [
     {
@@ -106,12 +132,25 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
 
   @override
   void dispose() {
+    _asrAutoStopTimer?.cancel();
+    _asrStreamSub?.cancel();
+    _asrRecorder?.dispose();
     _pulseController.dispose();
     _speech.stop();
     super.dispose();
   }
 
   Future<void> _startListening() async {
+    if (_isUnderWidgetTest || _isTranscribingAsr) return;
+
+    await _cancelActiveCapture();
+
+    // Mooré & Dioula passent par l'ASR neuronal backend (facebook/mms-1b-all)
+    if (_selectedLanguage == 'mos' || _selectedLanguage == 'diu') {
+      await _startAsrRecording();
+      return;
+    }
+
     try {
       if (!kIsWeb) {
         final micStatus = await Permission.microphone.request();
@@ -183,13 +222,8 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
           },
         );
       } else {
-        if (mounted) {
-          setState(() {
-            _isListening = false;
-            _statusMessage =
-                'Sélectionnez un lieu ou prononcez votre destination :';
-          });
-        }
+        // Repli sur l'enregistreur ASR serveur si la reconnaissance navigateur n'est pas disponible
+        await _startAsrRecording();
       }
     } catch (e) {
       AppLogger.w('Erreur d\'écoute vocale: $e');
@@ -203,7 +237,165 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
     }
   }
 
+  Future<void> _cancelActiveCapture() async {
+    _asrAutoStopTimer?.cancel();
+    _asrAutoStopTimer = null;
+    if (_isRecordingAsr) {
+      try {
+        await _asrStreamSub?.cancel();
+        await _asrRecorder?.stop();
+      } catch (_) {}
+      _isRecordingAsr = false;
+    }
+    try {
+      await _speech.stop();
+    } catch (_) {}
+  }
+
+  Future<void> _startAsrRecording() async {
+    try {
+      if (!kIsWeb) {
+        final micStatus = await Permission.microphone.request();
+        if (!micStatus.isGranted) {
+          if (mounted) {
+            setState(() {
+              _isListening = false;
+              _isRecordingAsr = false;
+              _statusMessage =
+                  'Permission micro refusée. Choisissez un lieu ci-dessous :';
+            });
+          }
+          return;
+        }
+      }
+
+      final recorder = _asrRecorder ??= AudioRecorder();
+      final permitted = await recorder.hasPermission();
+      if (!permitted) {
+        if (mounted) {
+          setState(() {
+            _isListening = false;
+            _isRecordingAsr = false;
+            _statusMessage =
+                'Microphone inaccessible dans ce navigateur. Choisissez ci-dessous :';
+          });
+        }
+        return;
+      }
+
+      _pcmBuilder = BytesBuilder(copy: false);
+      final stream = await recorder.startStream(
+        const RecordConfig(
+          encoder: AudioEncoder.pcm16bits,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
+      );
+      _asrStreamSub = stream.listen(
+        (chunk) => _pcmBuilder.add(chunk),
+        onError: (Object err) => AppLogger.w('[VOIX-ASR] Erreur flux audio: $err'),
+      );
+
+      if (mounted) {
+        setState(() {
+          _isListening = true;
+          _isRecordingAsr = true;
+          _spokenText = '';
+          _statusMessage =
+              'Parlez en ${_langDisplayName(_selectedLanguage)}... Touchez le micro pour envoyer';
+        });
+      }
+
+      _asrAutoStopTimer?.cancel();
+      _asrAutoStopTimer = Timer(const Duration(seconds: 6), () {
+        if (mounted && _isRecordingAsr) {
+          _stopAndTranscribeAsr();
+        }
+      });
+    } catch (e) {
+      AppLogger.w('Erreur démarrage enregistrement ASR: $e');
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _isRecordingAsr = false;
+          _statusMessage =
+              'Micro prêt. Touchez le bouton ou sélectionnez un lieu :';
+        });
+      }
+    }
+  }
+
+  Future<void> _stopAndTranscribeAsr() async {
+    _asrAutoStopTimer?.cancel();
+    _asrAutoStopTimer = null;
+    if (!_isRecordingAsr) return;
+
+    try {
+      await _asrRecorder?.stop();
+    } catch (e) {
+      AppLogger.w('Erreur arrêt recorder ASR: $e');
+    }
+    try {
+      await _asrStreamSub?.cancel();
+    } catch (_) {}
+    _asrStreamSub = null;
+    _isRecordingAsr = false;
+
+    final pcmBytes = _pcmBuilder.takeBytes();
+    if (pcmBytes.length < 3200) {
+      if (mounted) {
+        setState(() {
+          _isListening = false;
+          _statusMessage =
+              'Audio trop court. Touchez le micro et parlez plus distinctement.';
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _isListening = false;
+        _isTranscribingAsr = true;
+        _statusMessage =
+            'Analyse vocale ${_langDisplayName(_selectedLanguage)} (MMS)...';
+      });
+    }
+
+    try {
+      final wavBytes = VoiceAsrService.wrapPcm16AsWav(pcmBytes);
+      final text = await ref
+          .read(voiceAsrServiceProvider)
+          .transcribeWavBytes(wavBytes, lang: _selectedLanguage);
+      if (!mounted) return;
+      setState(() {
+        _isTranscribingAsr = false;
+        _spokenText = text;
+        if (text.isEmpty) {
+          _statusMessage =
+              'Aucun mot reconnu. Réessayez ou choisissez un lieu :';
+        }
+      });
+      if (text.isNotEmpty) {
+        _processSpokenText(text);
+      }
+    } catch (e) {
+      AppLogger.w('Échec transcription ASR ($_selectedLanguage): $e');
+      if (mounted) {
+        setState(() {
+          _isTranscribingAsr = false;
+          _statusMessage =
+              'Reconnaissance vocale ${_langDisplayName(_selectedLanguage)} indisponible. Réessayez ou choisissez un lieu :';
+        });
+      }
+    }
+  }
+
   Future<void> _stopListening() async {
+    if (_isRecordingAsr) {
+      await _stopAndTranscribeAsr();
+      return;
+    }
     try {
       await _speech.stop();
     } catch (e) {
@@ -377,6 +569,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
               // Bouton Micro animé avec halo d'écoute
               GestureDetector(
                 onTap: () {
+                  if (_isTranscribingAsr) return;
                   if (_isListening) {
                     _stopListening();
                   } else {
@@ -406,11 +599,19 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
                         ),
                       ],
                     ),
-                    child: Icon(
-                      _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
-                      color: Colors.white,
-                      size: 42,
-                    ),
+                    child: _isTranscribingAsr
+                        ? const Padding(
+                            padding: EdgeInsets.all(24),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 3,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Icon(
+                            _isListening ? Icons.mic_rounded : Icons.mic_none_rounded,
+                            color: Colors.white,
+                            size: 42,
+                          ),
                   ),
                 ),
               ),

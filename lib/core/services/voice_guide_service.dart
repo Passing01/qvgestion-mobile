@@ -469,8 +469,8 @@ class VoiceGuide {
     final dio = Dio(
       BaseOptions(
         responseType: ResponseType.bytes,
-        connectTimeout: const Duration(milliseconds: 1200),
-        receiveTimeout: const Duration(milliseconds: 1500),
+        connectTimeout: const Duration(milliseconds: 2500),
+        receiveTimeout: const Duration(milliseconds: 6500),
         validateStatus: (status) => status == 200,
       ),
     );
