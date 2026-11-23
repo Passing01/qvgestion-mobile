@@ -661,13 +661,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
     }
 
-    // Étape 9a · Annonceur pas-à-pas synchronisé sur l'étape active (200 m et 50 m)
+    // Étape 9a · Annonceur pas-à-pas synchronisé sur l'étape active (paliers + rappel régulier 45 s)
     if (_announcer != null && _guideSteps.isNotEmpty) {
       _announcer!.onProgress(
         u.along,
         _guideSteps,
         language: lang,
         activeStepIndex: targetIndex,
+        longRangeThresholds: true,
+        periodicInterval: const Duration(seconds: 45),
+        now: now,
       );
     }
 
@@ -980,6 +983,23 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     );
     unawaited(voiceGuide.prefetchSteps(_guideSteps, language: activeLang));
     _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
+    if (!_isUnderWidgetTest &&
+        _guideSteps.isNotEmpty &&
+        _announcer != null &&
+        !_announcer!.hasSpokenYet) {
+      final stepIdx = ref.read(currentManeuverIndexProvider);
+      if (stepIdx >= 0 && stepIdx < _guideSteps.length) {
+        final rem =
+            (_guideSteps[stepIdx].along - (_lastNavUpdate?.along ?? 0.0))
+                .clamp(0.0, 500000.0);
+        _announcer!.announceStepNow(
+          _guideSteps[stepIdx],
+          remainingDist: rem,
+          language: activeLang,
+          now: DateTime.now(),
+        );
+      }
+    }
     if (mounted) {
       AppSnackbar.showSuccess(
         context,

@@ -176,7 +176,6 @@ class GuideStep {
 
   String _spokenMoore(double dist) {
     final effectiveAnchor = nameTts ?? anchorName ?? '';
-    final dInt = dist.toInt();
     final action = _actionMoore(maneuverType);
 
     if (maneuverType == 'arrive') {
@@ -186,21 +185,25 @@ class GuideStep {
       return 'Rɩk sorã';
     }
 
+    final distPhrase = dist >= 1000.0
+        ? 'Kilomɛtr ${(dist / 1000.0).round()}'
+        : 'Mɛtr ${dist.toInt()}';
+
     if (confidence >= 2 && effectiveAnchor.isNotEmpty) {
       if (anchorType == 'traffic_signal' || anchorType == 'feu') {
         return dist >= 100.0
-            ? 'Mɛtr $dInt poore, feu wã nengẽ, $action'
+            ? '$distPhrase poore, feu wã nengẽ, $action'
             : 'Feu wã nengẽ, $action';
       } else {
         return dist >= 100.0
-            ? 'Mɛtr $dInt poore, $effectiveAnchor poore, $action'
+            ? '$distPhrase poore, $effectiveAnchor poore, $action'
             : '$effectiveAnchor poore, $action';
       }
     }
 
     return dist >= 100.0
-        ? 'Mɛtr $dInt poore, $action'
-        : 'Taore mɛtr $dInt, $action';
+        ? '$distPhrase poore, $action'
+        : 'Taore mɛtr ${dist.toInt()}, $action';
   }
 
   /// Asset audio humain natif en Mooré enregistré localement (fallback garanti si TTS neuronal indisponible)
@@ -235,7 +238,6 @@ class GuideStep {
 
   String _spokenDioula(double dist) {
     final effectiveAnchor = nameTts ?? anchorName ?? '';
-    final dInt = dist.toInt();
     final action = _actionDioula(maneuverType);
 
     if (maneuverType == 'arrive') {
@@ -245,21 +247,25 @@ class GuideStep {
       return 'Sira ta';
     }
 
+    final distPhrase = dist >= 1000.0
+        ? 'Kilomɛtɛrɛ ${(dist / 1000.0).round()}'
+        : 'Mɛtɛrɛ ${dist.toInt()}';
+
     if (confidence >= 2 && effectiveAnchor.isNotEmpty) {
       if (anchorType == 'traffic_signal' || anchorType == 'feu') {
         return dist >= 100.0
-            ? 'Mɛtɛrɛ $dInt kɔfɛ, feu yɔrɔ la, $action'
+            ? '$distPhrase kɔfɛ, feu yɔrɔ la, $action'
             : 'Feu yɔrɔ la, $action';
       } else {
         return dist >= 100.0
-            ? 'Mɛtɛrɛ $dInt kɔfɛ, $effectiveAnchor kɔfɛ, $action'
+            ? '$distPhrase kɔfɛ, $effectiveAnchor kɔfɛ, $action'
             : '$effectiveAnchor kɔfɛ, $action';
       }
     }
 
     return dist >= 100.0
-        ? 'Mɛtɛrɛ $dInt kɔfɛ, $action'
-        : 'Ta ɲɛfɛ mɛtɛrɛ $dInt, ka $action';
+        ? '$distPhrase kɔfɛ, $action'
+        : 'Ta ɲɛfɛ mɛtɛrɛ ${dist.toInt()}, ka $action';
   }
 
   static String _actionFr(String type) {
@@ -673,30 +679,67 @@ class Announcer {
 
   final VoiceGuide voice;
   final _spoken = <String>{};
+  DateTime? _lastSpokenAt;
 
   /// Clés d'annonces déjà prononcées (pour assertions et tests)
   Set<String> get spoken => Set.unmodifiable(_spoken);
+
+  bool get hasSpokenYet => _lastSpokenAt != null;
+
+  /// Prononce immédiatement la consigne courante (utile au démarrage de la navigation).
+  void announceStepNow(
+    GuideStep step, {
+    required double remainingDist,
+    required String language,
+    DateTime? now,
+  }) {
+    final aligned = GuideStep.alignedDisplayMeters(remainingDist);
+    final effectiveDist = aligned > 0 ? aligned : 50.0;
+    _lastSpokenAt = now ?? DateTime.now();
+    voice.say(
+      step.spoken(dist: effectiveDist, language: language),
+      audioSource: step.audioFor(dist: effectiveDist, language: language),
+      language: language,
+      frenchFallbackText: step.spoken(dist: effectiveDist, language: 'fr'),
+      maneuverType: step.maneuverType,
+    );
+  }
 
   void onProgress(
     double along,
     List<GuideStep> steps, {
     String language = 'fr',
     int? activeStepIndex,
+    bool longRangeThresholds = false,
+    Duration? periodicInterval,
+    DateTime? now,
   }) {
+    final thresholds = longRangeThresholds
+        ? const [(1000.0, 120.0), (500.0, 70.0), (200.0, 40.0), (50.0, 40.0)]
+        : const [(200.0, 40.0), (50.0, 40.0)];
+
+    bool announcedInTick = false;
+
     for (var i = 0; i < steps.length; i++) {
       if (activeStepIndex != null && i != activeStepIndex) continue;
       final d = steps[i].along - along; // mètres avant le virage
       if (d < 5.0) continue;
 
+      if (longRangeThresholds) {
+        if (d < 850.0) _spoken.add('$i-1000');
+        if (d < 400.0) _spoken.add('$i-500');
+      }
       // Évite de prononcer "200 mètres" en retard si l'usager est déjà passé sous 130 m
       if (d < 130.0) {
         _spoken.add('$i-200');
       }
 
-      for (final t in const [200.0, 50.0]) {
+      for (final (t, window) in thresholds) {
         final key = '$i-${t.toInt()}';
-        if (d <= t && d > t - 40 && _spoken.add(key)) {
+        if (d <= t && d > t - window && _spoken.add(key)) {
           final spokenDist = GuideStep.alignedDisplayMeters(d);
+          _lastSpokenAt = now ?? DateTime.now();
+          announcedInTick = true;
           voice.say(
             steps[i].spoken(dist: spokenDist, language: language),
             audioSource: steps[i].audioFor(dist: spokenDist, language: language),
@@ -707,11 +750,41 @@ class Announcer {
         }
       }
     }
+
+    // Rappel vocal régulier sur les longs axes rectilignes (ex. toutes les 45 s)
+    if (!announcedInTick &&
+        periodicInterval != null &&
+        now != null &&
+        activeStepIndex != null &&
+        activeStepIndex >= 0 &&
+        activeStepIndex < steps.length) {
+      final d = steps[activeStepIndex].along - along;
+      final canRepeat = _lastSpokenAt == null ||
+          now.difference(_lastSpokenAt!) >= periodicInterval;
+      if (d > 260.0 && canRepeat) {
+        final spokenDist = GuideStep.alignedDisplayMeters(d);
+        _lastSpokenAt = now;
+        voice.say(
+          steps[activeStepIndex].spoken(dist: spokenDist, language: language),
+          audioSource: steps[activeStepIndex].audioFor(
+            dist: spokenDist,
+            language: language,
+          ),
+          language: language,
+          frenchFallbackText: steps[activeStepIndex].spoken(
+            dist: spokenDist,
+            language: 'fr',
+          ),
+          maneuverType: steps[activeStepIndex].maneuverType,
+        );
+      }
+    }
   }
 
   /// Réinitialise les annonces après un recalcul d'itinéraire
   void reset() {
     _spoken.clear();
+    _lastSpokenAt = null;
     voice.clearBanner();
   }
 }

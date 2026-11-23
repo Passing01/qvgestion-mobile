@@ -102,6 +102,52 @@ void main() {
       await standaloneGuide.say('Prenez la 2ème sortie au rond-point');
       expect(standaloneGuide.banner.value, 'Prenez la 2ème sortie au rond-point');
     });
+
+    test('4. Annonce immédiate au départ et rappels réguliers sur longs tronçons', () {
+      final steps = [
+        const GuideStep(
+          order: 1,
+          along: 2500.0,
+          instruction: 'Tournez à droite',
+          maneuverType: 'turn_right',
+          distanceMeters: 2500.0,
+        ),
+      ];
+
+      final t0 = DateTime(2026, 11, 23, 1, 0, 0);
+      announcer.announceStepNow(
+        steps.first,
+        remainingDist: 2500.0,
+        language: 'mos',
+        now: t0,
+      );
+      expect(voiceGuide.banner.value, contains('Kilomɛtr 3'));
+
+      // 20 s plus tard à 2100 m : pas encore 45 s -> silencieux
+      announcer.onProgress(
+        400.0,
+        steps,
+        language: 'mos',
+        activeStepIndex: 0,
+        longRangeThresholds: true,
+        periodicInterval: const Duration(seconds: 45),
+        now: t0.add(const Duration(seconds: 20)),
+      );
+      expect(spokenTexts.length, 1);
+
+      // 50 s après le départ à 1800 m : rappel régulier déclenché automatiquement
+      announcer.onProgress(
+        700.0,
+        steps,
+        language: 'mos',
+        activeStepIndex: 0,
+        longRangeThresholds: true,
+        periodicInterval: const Duration(seconds: 45),
+        now: t0.add(const Duration(seconds: 50)),
+      );
+      expect(spokenTexts.length, 2);
+      expect(voiceGuide.banner.value, contains('Kilomɛtr 2'));
+    });
   });
 
   group('Étape 9b · Narrateur local : repères réels et phonétique name_tts', () {
