@@ -981,7 +981,6 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       enrichedRoute: freshEnriched ?? enriched,
       places: places,
     );
-    unawaited(voiceGuide.prefetchSteps(_guideSteps, language: activeLang));
     _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
     if (!_isUnderWidgetTest &&
         _guideSteps.isNotEmpty &&
@@ -992,6 +991,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         final rem =
             (_guideSteps[stepIdx].along - (_lastNavUpdate?.along ?? 0.0))
                 .clamp(0.0, 500000.0);
+        // Priorité absolue à la 1ʳᵉ annonce Hugging Face avant le pré-chauffage des virages suivants
         _announcer!.announceStepNow(
           _guideSteps[stepIdx],
           remainingDist: rem,
@@ -999,6 +999,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           now: DateTime.now(),
         );
       }
+    }
+    if (!_isUnderWidgetTest) {
+      final startIdx = ref.read(currentManeuverIndexProvider);
+      unawaited(
+        Future<void>.delayed(const Duration(milliseconds: 2500), () async {
+          if (!mounted) return;
+          await voiceGuide.prefetchSteps(
+            _guideSteps,
+            language: activeLang,
+            startIndex: startIdx,
+          );
+        }),
+      );
     }
     if (mounted) {
       AppSnackbar.showSuccess(

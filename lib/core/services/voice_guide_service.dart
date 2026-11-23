@@ -514,23 +514,35 @@ class VoiceGuide {
     final dio = Dio(
       BaseOptions(
         responseType: ResponseType.bytes,
-        connectTimeout: const Duration(milliseconds: 4000),
-        receiveTimeout: const Duration(milliseconds: 15000),
+        connectTimeout: const Duration(milliseconds: 5000),
+        receiveTimeout: const Duration(milliseconds: 25000),
         validateStatus: (status) => status == 200,
       ),
     );
     try {
-      final res = await dio.get<List<int>>(url);
-      final raw = res.data;
-      if (res.statusCode != 200 || raw == null || raw.length <= 64) {
-        return null;
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          final res = await dio.get<List<int>>(url);
+          final raw = res.data;
+          if (res.statusCode == 200 && raw != null && raw.length > 64) {
+            final bytes = Uint8List.fromList(raw);
+            if (_memAudioCache.length >= 160) {
+              _memAudioCache.remove(_memAudioCache.keys.first);
+            }
+            _memAudioCache[url] = bytes;
+            return bytes;
+          }
+          return null;
+        } on DioException catch (e) {
+          final code = e.response?.statusCode;
+          if (attempt == 0 && (code == 503 || code == 502 || code == 504)) {
+            await Future<void>.delayed(const Duration(milliseconds: 900));
+            continue;
+          }
+          rethrow;
+        }
       }
-      final bytes = Uint8List.fromList(raw);
-      if (_memAudioCache.length >= 160) {
-        _memAudioCache.remove(_memAudioCache.keys.first);
-      }
-      _memAudioCache[url] = bytes;
-      return bytes;
+      return null;
     } catch (e) {
       AppLogger.w('[VOIX] TTS distant indisponible ($e)');
       return null;
@@ -539,7 +551,7 @@ class VoiceGuide {
     }
   }
 
-  /// Pré-chauffe les prochaines consignes par fenêtre glissante pour éviter toute latence sur longs trajets (> 100 km).
+  /// Pré-chauffe les prochaines consignes séquentiellement pour ne pas saturer ZeroGPU.
   Future<void> prefetchSteps(
     List<GuideStep> steps, {
     required String language,
@@ -574,10 +586,11 @@ class VoiceGuide {
       }
     }
 
-    // Téléchargement par paires concurrentes pour saturer le cache sans surcharger le GPU
-    for (var i = 0; i < urlsToFetch.length; i += 2) {
-      final batch = urlsToFetch.skip(i).take(2).map(_fetchAudioBytesIfReady);
-      await Future.wait(batch);
+    for (var i = 0; i < urlsToFetch.length; i++) {
+      await _fetchAudioBytesIfReady(urlsToFetch[i]);
+      if (i + 1 < urlsToFetch.length) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+      }
     }
   }
 
