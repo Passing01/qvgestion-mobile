@@ -651,12 +651,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ref.read(currentManeuverIndexProvider.notifier).setIndex(targetIndex);
         ref.read(voiceGuideProvider).clearBanner();
         unawaited(
-          ref.read(voiceGuideProvider).prefetchSteps(
-            _guideSteps,
-            language: lang,
-            startIndex: targetIndex,
-            maxSteps: 6,
-          ),
+          ref
+              .read(voiceGuideProvider)
+              .prefetchSteps(
+                _guideSteps,
+                language: lang,
+                startIndex: targetIndex,
+                maxSteps: 6,
+              ),
         );
       }
     }
@@ -783,7 +785,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   Future<void> _startActiveNavigation() async {
     try {
       final selectedModeStart = ref.read(selectedRouteModeProvider);
-      var route = ref.read(activeRouteProvider).value ??
+      var route =
+          ref.read(activeRouteProvider).value ??
           ref.read(multiModeRoutesProvider).value?[selectedModeStart];
       if (route == null) {
         if (mounted) {
@@ -809,7 +812,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       var lastGps = locService.last;
 
       // Règle 1 : Sur appareil réel (si permission GPS active), rafraîchir le point GPS avant de démarrer
-      if (!_isUnderWidgetTest && !AppConfig.testMode && (_permissionOk || !kIsWeb)) {
+      if (!_isUnderWidgetTest &&
+          !AppConfig.testMode &&
+          (_permissionOk || !kIsWeb)) {
         if (lastGps == null || !locService.isStartUsable(lastGps)) {
           lastGps = await locService.refreshCurrentPosition();
         }
@@ -823,204 +828,204 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         }
       }
 
-    // Position de départ effective
-    final currentLoc = ref.read(currentLocationProvider);
-    final userLatLng = lastGps != null
-        ? LatLng(lastGps.latitude, lastGps.longitude)
-        : (geom.pts.isNotEmpty && _isUnderWidgetTest
-              ? geom.pts.first
-              : LatLng(currentLoc.lat, currentLoc.lon));
+      // Position de départ effective
+      final currentLoc = ref.read(currentLocationProvider);
+      final userLatLng = lastGps != null
+          ? LatLng(lastGps.latitude, lastGps.longitude)
+          : (geom.pts.isNotEmpty && _isUnderWidgetTest
+                ? geom.pts.first
+                : LatLng(currentLoc.lat, currentLoc.lon));
 
-    // Règle 2 : Si l'utilisateur est à plus de 150 m du tracé au démarrage, proposer de recalculer
-    if (NavigationEngine.isStartFarFromRoute(geom, userLatLng)) {
-      final offDist = geom.project(userLatLng).off.round();
-      final shouldReroute = await showDialog<bool>(
-        context: context,
-        barrierDismissible: false,
-        builder: (ctx) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Row(
-            children: [
-              Icon(
-                Icons.wrong_location_rounded,
-                color: Color(0xFFD97706),
-                size: 24,
-              ),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Éloigné du tracé',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+      // Règle 2 : Si l'utilisateur est à plus de 150 m du tracé au démarrage, proposer de recalculer
+      if (NavigationEngine.isStartFarFromRoute(geom, userLatLng)) {
+        final offDist = geom.project(userLatLng).off.round();
+        final shouldReroute = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: const Row(
+              children: [
+                Icon(
+                  Icons.wrong_location_rounded,
+                  color: Color(0xFFD97706),
+                  size: 24,
                 ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Éloigné du tracé',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 17),
+                  ),
+                ),
+              ],
+            ),
+            content: Text(
+              'Votre position actuelle est à $offDist m de l\'itinéraire prévu (> 150 m). Voulez-vous recalculer l\'itinéraire depuis votre position ?',
+              style: const TextStyle(fontSize: 14, color: Color(0xFF334155)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton(
+                key: const Key('btn_recalculate_from_my_position'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Recalculer depuis ma position'),
               ),
             ],
           ),
-          content: Text(
-            'Votre position actuelle est à $offDist m de l\'itinéraire prévu (> 150 m). Voulez-vous recalculer l\'itinéraire depuis votre position ?',
-            style: const TextStyle(fontSize: 14, color: Color(0xFF334155)),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              key: const Key('btn_recalculate_from_my_position'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Recalculer depuis ma position'),
-            ),
-          ],
-        ),
-      );
+        );
 
-      if (shouldReroute != true || !mounted) return;
+        if (shouldReroute != true || !mounted) return;
 
-      final selectedPlace = ref.read(selectedPlaceProvider);
-      final destCoord = DebugInfo.instance.destination;
-      final destLat = selectedPlace?.latitude ?? destCoord?.latitude;
-      final destLon = selectedPlace?.longitude ?? destCoord?.longitude;
-      if (destLat != null && destLon != null) {
-        final mode = ref.read(selectedRouteModeProvider);
-        final recalculated = await ref
-            .read(activeRouteProvider.notifier)
-            .calculate(
-              origin: CoordinateModel(
-                lat: userLatLng.latitude,
-                lon: userLatLng.longitude,
-                name: 'Ma position GPS',
-              ),
-              destination: CoordinateModel(
-                lat: destLat,
-                lon: destLon,
-                name: selectedPlace?.nom ?? 'Destination',
-              ),
-              mode: mode,
-            );
-        if (recalculated == null || !mounted) return;
-        route = recalculated;
-        geom = RouteGeometry.fromRoute(route);
-        final reErr = NavigationEngine.canStart(geom);
-        if (reErr != null) {
-          AppSnackbar.showError(context, message: reErr);
-          return;
+        final selectedPlace = ref.read(selectedPlaceProvider);
+        final destCoord = DebugInfo.instance.destination;
+        final destLat = selectedPlace?.latitude ?? destCoord?.latitude;
+        final destLon = selectedPlace?.longitude ?? destCoord?.longitude;
+        if (destLat != null && destLon != null) {
+          final mode = ref.read(selectedRouteModeProvider);
+          final recalculated = await ref
+              .read(activeRouteProvider.notifier)
+              .calculate(
+                origin: CoordinateModel(
+                  lat: userLatLng.latitude,
+                  lon: userLatLng.longitude,
+                  name: 'Ma position GPS',
+                ),
+                destination: CoordinateModel(
+                  lat: destLat,
+                  lon: destLon,
+                  name: selectedPlace?.nom ?? 'Destination',
+                ),
+                mode: mode,
+              );
+          if (recalculated == null || !mounted) return;
+          route = recalculated;
+          geom = RouteGeometry.fromRoute(route);
+          final reErr = NavigationEngine.canStart(geom);
+          if (reErr != null) {
+            AppSnackbar.showError(context, message: reErr);
+            return;
+          }
         }
       }
-    }
 
-    // Initialisation du moteur de navigation (Étape 8)
-    _navEngine = NavigationEngine(geom);
-    _smoothedSpeedMps = null;
-    _arrivalAnnounced = false;
-    _rerouteErrorBanner = null;
-    _isReroutingInFlight = false;
+      // Initialisation du moteur de navigation (Étape 8)
+      _navEngine = NavigationEngine(geom);
+      _smoothedSpeedMps = null;
+      _arrivalAnnounced = false;
+      _rerouteErrorBanner = null;
+      _isReroutingInFlight = false;
 
-    // Initialisation du guidage vocal et narrateur local (Étape 9)
-    final voiceGuide = ref.read(voiceGuideProvider);
-    voiceGuide.init();
-    _announcer = Announcer(voiceGuide);
-    _announcer!.reset();
-    final enriched = ref.read(activeEnrichedRouteProvider).value;
-    final places = ref.read(placesStateProvider).placesList;
-    _guideSteps = buildGuideSteps(
-      route: route,
-      enrichedRoute: enriched,
-      places: places,
-    );
+      // Initialisation du guidage vocal et narrateur local (Étape 9)
+      final voiceGuide = ref.read(voiceGuideProvider);
+      await voiceGuide.init();
+      _announcer = Announcer(voiceGuide);
+      _announcer!.reset();
+      final enriched = ref.read(activeEnrichedRouteProvider).value;
+      final places = ref.read(placesStateProvider).placesList;
+      _guideSteps = buildGuideSteps(
+        route: route,
+        enrichedRoute: enriched,
+        places: places,
+      );
 
-    final selectedModeNow = ref.read(selectedRouteModeProvider);
-    ref.read(mapServiceProvider).setTransportMode(selectedModeNow);
+      final selectedModeNow = ref.read(selectedRouteModeProvider);
+      ref.read(mapServiceProvider).setTransportMode(selectedModeNow);
 
-    // Règle 7 : Activer le service de premier plan + WakeLock sur Android pendant la course
-    if (!_isUnderWidgetTest && (_permissionOk || !kIsWeb)) {
-      await locService.setNavigationMode(true);
-    }
-
-    // Premier calcul de progression immédiat au démarrage
-    final initAcc = lastGps?.accuracy ?? 5.0;
-    final initSpeed =
-        (lastGps != null && lastGps.speed.isFinite && lastGps.speed > 0)
-        ? lastGps.speed * 3.6
-        : 0.0;
-    _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
-
-    ref.read(mapScreenStateProvider.notifier).toActiveNavigation();
-    if (lastGps != null) {
-      setState(() => _following = true);
-      final isBuildings3d =
-          ref.read(navigationViewModeProvider) ==
-          NavigationViewMode.buildings3d;
-      if (isBuildings3d) {
-        final monuments = await ref.read(monuments3dGeoJsonProvider.future);
-        await ref.read(mapServiceProvider).setMonuments3dGeoJson(monuments);
+      // Règle 7 : Activer le service de premier plan + WakeLock sur Android pendant la course
+      if (!_isUnderWidgetTest && (_permissionOk || !kIsWeb)) {
+        await locService.setNavigationMode(true);
       }
-      ref
-          .read(mapServiceProvider)
-          .animateCamera(
-            lat: lastGps.latitude,
-            lng: lastGps.longitude,
-            zoom: isBuildings3d ? 18.3 : 17.0,
-            bearing: isBuildings3d ? _vehicleHeading : null,
-            tilt: isBuildings3d
-                ? 64.0
-                : (ref.read(is3dMapModeProvider) ? 52.0 : 0.0),
-          );
-    }
 
-    final activeLang = ref.read(guidanceLanguageProvider);
-    final freshEnriched = await ref
-        .read(activeEnrichedRouteProvider.notifier)
-        .enrichRoute(route: route, language: activeLang);
-    _guideSteps = buildGuideSteps(
-      route: route,
-      enrichedRoute: freshEnriched ?? enriched,
-      places: places,
-    );
-    _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
-    if (!_isUnderWidgetTest &&
-        _guideSteps.isNotEmpty &&
-        _announcer != null &&
-        !_announcer!.hasSpokenYet) {
-      final stepIdx = ref.read(currentManeuverIndexProvider);
-      if (stepIdx >= 0 && stepIdx < _guideSteps.length) {
-        final rem =
-            (_guideSteps[stepIdx].along - (_lastNavUpdate?.along ?? 0.0))
-                .clamp(0.0, 500000.0);
-        // Priorité absolue à la 1ʳᵉ annonce Hugging Face avant le pré-chauffage des virages suivants
-        _announcer!.announceStepNow(
-          _guideSteps[stepIdx],
-          remainingDist: rem,
-          language: activeLang,
-          now: DateTime.now(),
+      // Premier calcul de progression immédiat au démarrage
+      final initAcc = lastGps?.accuracy ?? 5.0;
+      final initSpeed =
+          (lastGps != null && lastGps.speed.isFinite && lastGps.speed > 0)
+          ? lastGps.speed * 3.6
+          : 0.0;
+      _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
+
+      ref.read(mapScreenStateProvider.notifier).toActiveNavigation();
+      if (lastGps != null) {
+        setState(() => _following = true);
+        final isBuildings3d =
+            ref.read(navigationViewModeProvider) ==
+            NavigationViewMode.buildings3d;
+        if (isBuildings3d) {
+          final monuments = await ref.read(monuments3dGeoJsonProvider.future);
+          await ref.read(mapServiceProvider).setMonuments3dGeoJson(monuments);
+        }
+        ref
+            .read(mapServiceProvider)
+            .animateCamera(
+              lat: lastGps.latitude,
+              lng: lastGps.longitude,
+              zoom: isBuildings3d ? 18.3 : 17.0,
+              bearing: isBuildings3d ? _vehicleHeading : null,
+              tilt: isBuildings3d
+                  ? 64.0
+                  : (ref.read(is3dMapModeProvider) ? 52.0 : 0.0),
+            );
+      }
+
+      final activeLang = ref.read(guidanceLanguageProvider);
+      final freshEnriched = await ref
+          .read(activeEnrichedRouteProvider.notifier)
+          .enrichRoute(route: route, language: activeLang);
+      _guideSteps = buildGuideSteps(
+        route: route,
+        enrichedRoute: freshEnriched ?? enriched,
+        places: places,
+      );
+      _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
+      if (!_isUnderWidgetTest &&
+          _guideSteps.isNotEmpty &&
+          _announcer != null &&
+          !_announcer!.hasSpokenYet) {
+        final stepIdx = ref.read(currentManeuverIndexProvider);
+        if (stepIdx >= 0 && stepIdx < _guideSteps.length) {
+          final rem =
+              (_guideSteps[stepIdx].along - (_lastNavUpdate?.along ?? 0.0))
+                  .clamp(0.0, 500000.0);
+          // Priorité absolue à la 1ʳᵉ annonce Hugging Face avant le pré-chauffage des virages suivants
+          _announcer!.announceStepNow(
+            _guideSteps[stepIdx],
+            remainingDist: rem,
+            language: activeLang,
+            now: DateTime.now(),
+          );
+        }
+      }
+      if (!_isUnderWidgetTest) {
+        final startIdx = ref.read(currentManeuverIndexProvider);
+        unawaited(
+          Future<void>.delayed(const Duration(milliseconds: 2500), () {
+            if (!mounted) return;
+            return voiceGuide.prefetchSteps(
+              _guideSteps,
+              language: activeLang,
+              startIndex: startIdx,
+            );
+          }),
         );
       }
-    }
-    if (!_isUnderWidgetTest) {
-      final startIdx = ref.read(currentManeuverIndexProvider);
-      unawaited(
-        Future<void>.delayed(const Duration(milliseconds: 2500), () async {
-          if (!mounted) return;
-          await voiceGuide.prefetchSteps(
-            _guideSteps,
-            language: activeLang,
-            startIndex: startIdx,
-          );
-        }),
-      );
-    }
-    if (mounted) {
-      AppSnackbar.showSuccess(
-        context,
-        title: 'Guidage démarré',
-        message:
-            'Consignes vocales locales en ${activeLang.toUpperCase()} actives.',
-      );
-    }
+      if (mounted) {
+        AppSnackbar.showSuccess(
+          context,
+          title: 'Guidage démarré',
+          message:
+              'Consignes vocales locales en ${activeLang.toUpperCase()} actives.',
+        );
+      }
     } catch (e, st) {
       AppErrorReporter.reportError(
         'Impossible de démarrer la navigation',
@@ -2380,9 +2385,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       ? BoxDecoration(
                           color: Colors.white.withValues(alpha: 0.94),
                           borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: const Color(0xFFE2E8F0),
-                          ),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
                           boxShadow: [
                             BoxShadow(
                               color: Colors.black.withValues(alpha: 0.12),
@@ -2398,429 +2401,440 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                  // Bandeau officiel MODE TEST bien visible (Tâche 11)
-                  if (AppConfig.testMode)
-                    Container(
-                      key: const Key('banner_test_mode'),
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 4,
-                        horizontal: 12,
-                      ),
-                      color: const Color(0xFFEA580C),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.science_rounded,
-                            size: 16,
-                            color: Colors.white,
+                      // Bandeau officiel MODE TEST bien visible (Tâche 11)
+                      if (AppConfig.testMode)
+                        Container(
+                          key: const Key('banner_test_mode'),
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 4,
+                            horizontal: 12,
                           ),
-                          SizedBox(width: 6),
-                          Text(
-                            'MODE TEST ACTIF',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                              letterSpacing: 1.1,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Bandeau Signal GPS perdu (Étape 6) : actif sur mobile (>10s) ou en navigation Web (>45s)
-                  if (gpsLost &&
-                      _permissionOk &&
-                      (!kIsWeb ||
-                          screenState == MapScreenState.activeNavigation))
-                    Container(
-                      key: const Key('banner_gps_lost'),
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 9,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDC2626),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.gps_off_rounded,
-                            color: Colors.white,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Signal GPS perdu',
-                              style: TextStyle(
+                          color: const Color(0xFFEA580C),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.science_rounded,
+                                size: 16,
                                 color: Colors.white,
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
                               ),
-                            ),
-                          ),
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white70,
+                              SizedBox(width: 6),
+                              Text(
+                                'MODE TEST ACTIF',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  letterSpacing: 1.1,
+                                ),
                               ),
-                            ),
+                            ],
                           ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                  // Bandeaux de statut de permission GPS (Étape 6)
-                  if (_locationStatus == LocationStatus.serviceOff)
-                    _buildGpsStatusBanner(
-                      key: const Key('banner_gps_service_off'),
-                      icon: Icons.location_disabled_rounded,
-                      message: 'Service de localisation désactivé',
-                      actionLabel: 'Activer',
-                      onAction: () => ref
-                          .read(locationServiceProvider)
-                          .openLocationSettings(),
-                    ),
-                  if (_locationStatus == LocationStatus.denied)
-                    _buildGpsStatusBanner(
-                      key: const Key('banner_gps_denied'),
-                      icon: Icons.location_searching_rounded,
-                      message: 'Permission de localisation requise',
-                      actionLabel: 'Autoriser',
-                      onAction: () => _initLocationService(userInitiated: true),
-                    ),
-                  if (_locationStatus == LocationStatus.deniedForever)
-                    _buildGpsStatusBanner(
-                      key: const Key('banner_gps_denied_forever'),
-                      icon: Icons.settings_suggest_rounded,
-                      message: 'Permission refusée dans les réglages',
-                      actionLabel: 'Réglages',
-                      onAction: () =>
-                          ref.read(locationServiceProvider).openAppSettings(),
-                    ),
-
-                  // Bandeau rouge d'erreur réseau avec conservation des points (Tâche 9)
-                  if (placesState.hasError)
-                    Container(
-                      key: const Key('banner_api_error'),
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 4,
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDC2626),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
+                      // Bandeau Signal GPS perdu (Étape 6) : actif sur mobile (>10s) ou en navigation Web (>45s)
+                      if (gpsLost &&
+                          _permissionOk &&
+                          (!kIsWeb ||
+                              screenState == MapScreenState.activeNavigation))
+                        Container(
+                          key: const Key('banner_gps_lost'),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
                           ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(
-                            Icons.wifi_off_rounded,
-                            color: Colors.white,
-                            size: 18,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 9,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              placesState.errorMessage ??
-                                  'Erreur réseau (points précédents conservés)',
-                              style: const TextStyle(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDC2626),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.gps_off_rounded,
                                 color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
+                                size: 18,
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Signal GPS perdu',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white70,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          TextButton(
-                            onPressed: _refreshPlaces,
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                              ),
-                              minimumSize: Size.zero,
-                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                            ),
-                            child: const Text(
-                              'Réessayer',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 12,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
 
-                  FasoNavHeader(
-                    onNotificationsTap: () {
-                      NotificationsSheet.show(context);
-                    },
-                    onShareTripTap: () {
-                      final loc = ref.read(currentLocationProvider);
-                      ShareTripSheet.show(
-                        context,
-                        currentLat: loc.lat,
-                        currentLon: loc.lon,
-                      );
-                    },
-                    onProfileTap: () {
-                      AuthModalSheet.show(context);
-                    },
-                  ),
-                  const ActiveTrackingBanner(),
-                  const SizedBox(height: 6),
-                  FasoNavSearchBar(
-                    onTap: () async {
-                      final result = await PlacesSearchSheet.show(context);
-                      if (result is PlaceModel) {
-                        ref.read(selectedPlaceProvider.notifier).select(result);
-                      } else if (result is RoutePlannerResult) {
-                        await _launchMultiPointRoute(result);
-                      }
-                    },
-                    onVoiceTap: () async {
-                      final chosenPlace = await VoiceSearchSheet.show(context);
-                      if (chosenPlace != null) {
-                        ref
-                            .read(selectedPlaceProvider.notifier)
-                            .select(chosenPlace);
-                        if (context.mounted) {
-                          AppSnackbar.showInfo(
+                      // Bandeaux de statut de permission GPS (Étape 6)
+                      if (_locationStatus == LocationStatus.serviceOff)
+                        _buildGpsStatusBanner(
+                          key: const Key('banner_gps_service_off'),
+                          icon: Icons.location_disabled_rounded,
+                          message: 'Service de localisation désactivé',
+                          actionLabel: 'Activer',
+                          onAction: () => ref
+                              .read(locationServiceProvider)
+                              .openLocationSettings(),
+                        ),
+                      if (_locationStatus == LocationStatus.denied)
+                        _buildGpsStatusBanner(
+                          key: const Key('banner_gps_denied'),
+                          icon: Icons.location_searching_rounded,
+                          message: 'Permission de localisation requise',
+                          actionLabel: 'Autoriser',
+                          onAction: () =>
+                              _initLocationService(userInitiated: true),
+                        ),
+                      if (_locationStatus == LocationStatus.deniedForever)
+                        _buildGpsStatusBanner(
+                          key: const Key('banner_gps_denied_forever'),
+                          icon: Icons.settings_suggest_rounded,
+                          message: 'Permission refusée dans les réglages',
+                          actionLabel: 'Réglages',
+                          onAction: () => ref
+                              .read(locationServiceProvider)
+                              .openAppSettings(),
+                        ),
+
+                      // Bandeau rouge d'erreur réseau avec conservation des points (Tâche 9)
+                      if (placesState.hasError)
+                        Container(
+                          key: const Key('banner_api_error'),
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 4,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFDC2626),
+                            borderRadius: BorderRadius.circular(12),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 8,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.wifi_off_rounded,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  placesState.errorMessage ?? 'Erreur réseau (points précédents conservés)',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: _refreshPlaces,
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                child: const Text(
+                                  'Réessayer',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      FasoNavHeader(
+                        onNotificationsTap: () {
+                          NotificationsSheet.show(context);
+                        },
+                        onShareTripTap: () {
+                          final loc = ref.read(currentLocationProvider);
+                          ShareTripSheet.show(
                             context,
-                            title: 'Recherche vocale',
-                            message:
-                                '📍 ${chosenPlace.nom} localisé sur la carte.',
+                            currentLat: loc.lat,
+                            currentLon: loc.lon,
                           );
-                        }
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  const WeatherTrafficTicker(),
-                  const SizedBox(height: 8),
-                  const FasoCategoryPills(),
-                  if (!isDesktop)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8, right: 16),
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: _buildMapStyleSelectorPill(is3dMap),
+                        },
+                        onProfileTap: () {
+                          AuthModalSheet.show(context);
+                        },
                       ),
-                    ),
+                      const ActiveTrackingBanner(),
+                      const SizedBox(height: 6),
+                      FasoNavSearchBar(
+                        onTap: () async {
+                          final result = await PlacesSearchSheet.show(context);
+                          if (result is PlaceModel) {
+                            ref
+                                .read(selectedPlaceProvider.notifier)
+                                .select(result);
+                          } else if (result is RoutePlannerResult) {
+                            await _launchMultiPointRoute(result);
+                          }
+                        },
+                        onVoiceTap: () async {
+                          final chosenPlace = await VoiceSearchSheet.show(
+                            context,
+                          );
+                          if (chosenPlace != null) {
+                            ref
+                                .read(selectedPlaceProvider.notifier)
+                                .select(chosenPlace);
+                            if (context.mounted) {
+                              AppSnackbar.showInfo(
+                                context,
+                                title: 'Recherche vocale',
+                                message:
+                                    '📍 ${chosenPlace.nom} localisé sur la carte.',
+                              );
+                            }
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                      const WeatherTrafficTicker(),
+                      const SizedBox(height: 8),
+                      const FasoCategoryPills(),
+                      if (!isDesktop)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8, right: 16),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _buildMapStyleSelectorPill(is3dMap),
+                          ),
+                        ),
 
-                  // Compteur dynamique et bouton Liste triée par distance (Tâche 10)
-                  if (selectedCats.isNotEmpty && placesState.count > 0)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: 8,
-                        left: 16,
-                        right: 16,
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            key: const Key('badge_places_count'),
+                      // Compteur dynamique et bouton Liste triée par distance (Tâche 10)
+                      if (selectedCats.isNotEmpty && placesState.count > 0)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 8,
+                            left: 16,
+                            right: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                key: const Key('badge_places_count'),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: const Color(0xFFE5E7EB),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.08,
+                                      ),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: const BoxDecoration(
+                                        color: Color(0xFF00A651),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      '${placesState.count} ${placesState.categoryLabel != null ? (placesState.count > 1 ? '${placesState.categoryLabel}s' : placesState.categoryLabel) : (placesState.count > 1 ? 'lieux' : 'lieu')}${placesState.truncated ? ' (tronqué)' : ''}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF1F2937),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton.icon(
+                                key: const Key('btn_places_list'),
+                                onPressed: () {
+                                  PlacesListBottomSheet.show(
+                                    context,
+                                    places: placesState.placesList,
+                                    title: placesState.categoryLabel != null
+                                        ? '${placesState.categoryLabel}s dans la zone'
+                                        : 'Lieux dans la zone',
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.format_list_bulleted_rounded,
+                                  size: 16,
+                                ),
+                                label: const Text(
+                                  'Liste',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1E3A5F),
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  minimumSize: Size.zero,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(18),
+                                  ),
+                                  elevation: 2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                      // Message ZÉRO LIEU avec bouton "Voir toute la ville" (Tâche 9)
+                      if (selectedCats.isNotEmpty &&
+                          placesState.isZero &&
+                          !placesState.isLoading)
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            top: 8,
+                            left: 16,
+                            right: 16,
+                          ),
+                          child: Container(
+                            key: const Key('banner_zero_places'),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
+                              horizontal: 14,
+                              vertical: 8,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(18),
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(16),
                               border: Border.all(
-                                color: const Color(0xFFE5E7EB),
+                                color: const Color(0xFFFDE68A),
                               ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.08),
+                                  color: Colors.black.withValues(alpha: 0.06),
                                   blurRadius: 8,
                                   offset: const Offset(0, 2),
                                 ),
                               ],
                             ),
                             child: Row(
-                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFF00A651),
-                                    shape: BoxShape.circle,
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  color: Color(0xFFB45309),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                const Expanded(
+                                  child: Text(
+                                    'Aucun lieu dans cette zone',
+                                    style: TextStyle(
+                                      color: Color(0xFF92400E),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 6),
-                                Text(
-                                  '${placesState.count} ${placesState.categoryLabel != null ? (placesState.count > 1 ? '${placesState.categoryLabel}s' : placesState.categoryLabel) : (placesState.count > 1 ? 'lieux' : 'lieu')}${placesState.truncated ? ' (tronqué)' : ''}',
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1F2937),
+                                ElevatedButton(
+                                  key: const Key('btn_view_entire_city'),
+                                  onPressed: () {
+                                    ref
+                                        .read(mapServiceProvider)
+                                        .animateCamera(
+                                          lat: AppConstants.ouagaCenterLatitude,
+                                          lng:
+                                              AppConstants.ouagaCenterLongitude,
+                                          zoom: 12.5,
+                                        );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFD97706),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    elevation: 0,
+                                  ),
+                                  child: const Text(
+                                    'Voir toute la ville',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          ElevatedButton.icon(
-                            key: const Key('btn_places_list'),
-                            onPressed: () {
-                              PlacesListBottomSheet.show(
-                                context,
-                                places: placesState.placesList,
-                                title: placesState.categoryLabel != null
-                                    ? '${placesState.categoryLabel}s dans la zone'
-                                    : 'Lieux dans la zone',
-                              );
-                            },
-                            icon: const Icon(
-                              Icons.format_list_bulleted_rounded,
-                              size: 16,
-                            ),
-                            label: const Text(
-                              'Liste',
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1E3A5F),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              minimumSize: Size.zero,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(18),
-                              ),
-                              elevation: 2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  // Message ZÉRO LIEU avec bouton "Voir toute la ville" (Tâche 9)
-                  if (selectedCats.isNotEmpty &&
-                      placesState.isZero &&
-                      !placesState.isLoading)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: 8,
-                        left: 16,
-                        right: 16,
-                      ),
-                      child: Container(
-                        key: const Key('banner_zero_places'),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 8,
                         ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFEF3C7),
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFFDE68A)),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.06),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.info_outline_rounded,
-                              color: Color(0xFFB45309),
-                              size: 18,
-                            ),
-                            const SizedBox(width: 8),
-                            const Expanded(
-                              child: Text(
-                                'Aucun lieu dans cette zone',
-                                style: TextStyle(
-                                  color: Color(0xFF92400E),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
-                            ElevatedButton(
-                              key: const Key('btn_view_entire_city'),
-                              onPressed: () {
-                                ref
-                                    .read(mapServiceProvider)
-                                    .animateCamera(
-                                      lat: AppConstants.ouagaCenterLatitude,
-                                      lng: AppConstants.ouagaCenterLongitude,
-                                      zoom: 12.5,
-                                    );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFFD97706),
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 10,
-                                  vertical: 6,
-                                ),
-                                minimumSize: Size.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: const Text(
-                                'Voir toute la ville',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
           // 4. TIROIR / FEUILLE INFÉRIEURE CONTEXTUELLE CONFORME À LA MAQUETTE
           if (isDesktop)
@@ -2830,14 +2844,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               width: 420,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxHeight: (screenSize.height -
-                          (screenState == MapScreenState.explore ? 275.0 : 96.0))
-                      .clamp(
-                        220.0,
-                        screenState == MapScreenState.explore
-                            ? screenSize.height * 0.68
-                            : screenSize.height * 0.82,
-                      ),
+                  maxHeight:
+                      (screenSize.height -
+                              (screenState == MapScreenState.explore
+                                  ? 275.0
+                                  : 96.0))
+                          .clamp(
+                            220.0,
+                            screenState == MapScreenState.explore
+                                ? screenSize.height * 0.68
+                                : screenSize.height * 0.82,
+                          ),
                 ),
                 child: SingleChildScrollView(
                   child: _buildBottomContext(
@@ -2889,8 +2906,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         children: [
           Icon(
             isOffline ? Icons.cloud_off_rounded : Icons.check_circle_rounded,
-            color:
-                isOffline ? const Color(0xFF38BDF8) : const Color(0xFF22C55E),
+            color: isOffline
+                ? const Color(0xFF38BDF8)
+                : const Color(0xFF22C55E),
             size: 16,
           ),
           const SizedBox(width: 6),
@@ -3673,8 +3691,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
           if (totalM > 0 && baseDurS > 0) {
             final baseSpeedMps = totalM / baseDurS;
             final effSpeedMps = _smoothedSpeedMps != null
-                ? (baseSpeedMps * 0.65 + _smoothedSpeedMps! * 0.35)
-                    .clamp(baseSpeedMps * 0.5, baseSpeedMps * 1.6)
+                ? (baseSpeedMps * 0.65 + _smoothedSpeedMps! * 0.35).clamp(
+                    baseSpeedMps * 0.5,
+                    baseSpeedMps * 1.6,
+                  )
                 : baseSpeedMps;
             final remSec = remM <= 25 ? 0 : (remM / effSpeedMps).round();
             final remMin = (remSec / 60).ceil();
@@ -3690,8 +3710,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             final eta = DateTime.now().add(Duration(seconds: remSec));
             final etaStr =
                 '${eta.hour.toString().padLeft(2, '0')}:${eta.minute.toString().padLeft(2, '0')}';
-            liveRemainingDistance =
-                remM <= 25 ? distLabel : '$distLabel • $etaStr';
+            liveRemainingDistance = remM <= 25
+                ? distLabel
+                : '$distLabel • $etaStr';
           } else {
             liveRemainingDistance = distLabel;
             liveRemainingTime =
@@ -3764,7 +3785,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                       maxSteps: 6,
                     ),
                   );
-                  final localized = _liveManeuverDisplay(activeLang: newLang).instructionText;
+                  final localized = _liveManeuverDisplay(activeLang: newLang)
+                      .instructionText;
                   vg.say(localized, language: newLang);
                 }
               },

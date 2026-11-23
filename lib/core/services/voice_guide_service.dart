@@ -98,9 +98,11 @@ class GuideStep {
   }
 
   /// Résout la source audio pour cette distance et cette langue.
-  /// Privilégie la voix neuronale dynamique (/guidance/tts) plutôt que les fichiers WhatsApp statiques.
+  /// Privilégie la voix neuronale dynamique (/guidance/tts) plutôt que les fichiers statiques ou bips synthétiques.
   String? audioFor({required double dist, String language = 'fr'}) {
-    if (localAudioFile != null && localAudioFile!.isNotEmpty) {
+    if (localAudioFile != null &&
+        localAudioFile!.isNotEmpty &&
+        localAudioFile!.startsWith('assets/')) {
       return localAudioFile;
     }
     return neuralTtsUrl(dist: dist, language: language);
@@ -429,19 +431,30 @@ class VoiceGuide {
     // Lecture du flux audio neuronal dynamique (ou source locale explicite)
     if (effectiveAudioSource != null && effectiveAudioSource.isNotEmpty && (!isTest || _customPlayer != null)) {
       try {
-        await _tts.stop();
+        Uint8List? neuralBytes;
+        if (effectiveAudioSource.startsWith('http')) {
+          // Récupérer d'abord les octets audio avant d'arrêter les lecteurs précédents
+          neuralBytes = await _fetchAudioBytesIfReady(effectiveAudioSource);
+          if (_speakSeq != mySeq) return; // Annulé si une annonce plus récente a remplacé celle-ci
+        }
+
+        try {
+          await _tts.stop();
+        } catch (_) {}
+
         final player = _player;
         if (player != null) {
-          await player.stop();
+          try {
+            await player.stop();
+          } catch (_) {}
+
           if (effectiveAudioSource.startsWith('assets/')) {
             if (_speakSeq != mySeq) return;
             await player.play(AssetSource(effectiveAudioSource.replaceFirst('assets/', '')));
             audioPlayed = true;
           } else if (effectiveAudioSource.startsWith('http')) {
-            final bytes = await _fetchAudioBytesIfReady(effectiveAudioSource);
-            if (_speakSeq != mySeq) return; // Annulé si une annonce plus récente a remplacé celle-ci
-            if (bytes != null && bytes.isNotEmpty) {
-              await player.play(BytesSource(bytes));
+            if (neuralBytes != null && neuralBytes.isNotEmpty) {
+              await player.play(BytesSource(neuralBytes));
               audioPlayed = true;
             }
           } else {
