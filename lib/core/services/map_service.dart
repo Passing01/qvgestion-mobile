@@ -343,8 +343,8 @@ class MapLibreMapService implements MapService {
         placesSourceId,
         placesData,
         cluster: true,
-        clusterRadius: 36.0,
-        clusterMaxZoom: 12.0,
+        clusterRadius: 46.0,
+        clusterMaxZoom: 14.0,
       );
 
       // Couche des grappes (cercles bleu foncé avec contour blanc et rayon adaptatif)
@@ -397,7 +397,7 @@ class MapLibreMapService implements MapService {
         AppLogger.w('Enregistrement des icônes pins: $e');
       }
 
-      // Couche des repères circulaires (point coloré haute fiabilité)
+      // Couche des repères circulaires discrets
       await _safeAddCircleLayer(
         c,
         existingLayers,
@@ -409,9 +409,10 @@ class MapLibreMapService implements MapService {
             [Expressions.get, 'color'],
             '#2563EB',
           ],
-          circleRadius: 6.5,
+          circleRadius: 3.0,
+          circleOpacity: 0.45,
           circleStrokeColor: '#FFFFFF',
-          circleStrokeWidth: 2.0,
+          circleStrokeWidth: 1.0,
         ),
         filter: [
           '!',
@@ -420,7 +421,7 @@ class MapLibreMapService implements MapService {
         enableInteraction: false,
       );
 
-      // Couche des lieux : icône Maps de catégorie avec push/badge en haut affichant le nom
+      // Couche des lieux : icônes anti-collision (façon Google Maps)
       await _safeAddSymbolLayer(
         c,
         existingLayers,
@@ -432,9 +433,10 @@ class MapLibreMapService implements MapService {
             [Expressions.get, 'icon'],
             'pin-default',
           ],
-          iconSize: 0.65,
+          iconSize: 0.62,
           iconAnchor: 'bottom',
-          iconAllowOverlap: true,
+          iconAllowOverlap: false,
+          iconPadding: 8.0,
           iconOptional: true,
           textField: [Expressions.get, 'name'],
           textSize: 11.0,
@@ -543,7 +545,7 @@ class MapLibreMapService implements MapService {
           lineJoin: 'round',
           lineCap: 'round',
         ),
-        belowLayerId: placesPointsLayerId,
+        belowLayerId: destinationPinAuraLayerId,
         enableInteraction: false,
       );
 
@@ -556,7 +558,7 @@ class MapLibreMapService implements MapService {
         routeGeoJson,
       );
 
-      // 2.1 Couche de liseré de contraste (blanc en clair, très sombre en nuit)
+      // 2.1 Couche de liseré de contraste (AU-DESSUS des POIs génériques pour rester 100% lisible)
       await _safeAddLineLayer(
         c,
         existingLayers,
@@ -564,16 +566,16 @@ class MapLibreMapService implements MapService {
         routeCasingLayerId,
         LineLayerProperties(
           lineColor: theme.routeCasing,
-          lineWidth: 10.0,
+          lineWidth: 10.5,
           lineJoin: 'round',
           lineCap: 'round',
         ),
         filter: ['!=', ['get', 'is_walk'], true],
-        belowLayerId: placesPointsLayerId,
+        belowLayerId: destinationPinAuraLayerId,
         enableInteraction: false,
       );
 
-      // 2.2 Couche intérieure du tracé (bleu vif haute lisibilité)
+      // 2.2 Couche intérieure du tracé (bleu vif haute lisibilité AU-DESSUS des POIs)
       await _safeAddLineLayer(
         c,
         existingLayers,
@@ -581,12 +583,12 @@ class MapLibreMapService implements MapService {
         routeLayerId,
         LineLayerProperties(
           lineColor: theme.route,
-          lineWidth: 6.0,
+          lineWidth: 6.5,
           lineJoin: 'round',
           lineCap: 'round',
         ),
         filter: ['!=', ['get', 'is_walk'], true],
-        belowLayerId: placesPointsLayerId,
+        belowLayerId: destinationPinAuraLayerId,
         enableInteraction: false,
       );
 
@@ -604,7 +606,7 @@ class MapLibreMapService implements MapService {
           lineCap: 'round',
         ),
         filter: ['==', ['get', 'is_walk'], true],
-        belowLayerId: placesPointsLayerId,
+        belowLayerId: destinationPinAuraLayerId,
         enableInteraction: false,
       );
 

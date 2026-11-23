@@ -78,15 +78,15 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
     {
       'label': 'Héros Nationaux',
       'query': 'Héros Nationaux',
-      'lat': 12.3160,
-      'lon': -1.5030,
+      'lat': 12.312187,
+      'lon': -1.502617,
       'quartier': 'Ouaga 2000',
     },
     {
       'label': 'CHU Yalgado Ouédraogo',
       'query': 'CHU Yalgado',
-      'lat': 12.3780,
-      'lon': -1.5120,
+      'lat': 12.3833115,
+      'lon': -1.5062033,
       'quartier': 'Dapoya',
     },
     {
@@ -106,8 +106,8 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
     {
       'label': 'Échangeur du Nord',
       'query': 'Échangeur du Nord',
-      'lat': 12.4010,
-      'lon': -1.5380,
+      'lat': 12.384738,
+      'lon': -1.554870,
       'quartier': 'Tampouy',
     },
   ];
