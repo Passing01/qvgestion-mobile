@@ -360,6 +360,8 @@ class VoiceGuide {
 
   /// Cache mémoire de session pour rejeu instantané (< 5 ms) des audios TTS générés
   final Map<String, Uint8List> _memAudioCache = <String, Uint8List>{};
+  final Map<String, Future<Uint8List?>> _inFlightAudio =
+      <String, Future<Uint8List?>>{};
 
   /// Bandeau de consigne toujours affiché en gros à l'écran
   final banner = ValueNotifier<String>('');
@@ -488,12 +490,21 @@ class VoiceGuide {
     }
   }
 
-  Future<Uint8List?> _fetchAudioBytesIfReady(String url) async {
+  Future<Uint8List?> _fetchAudioBytesIfReady(String url) {
     final cached = _memAudioCache[url];
     if (cached != null && cached.isNotEmpty) {
-      return cached;
+      return Future<Uint8List?>.value(cached);
     }
+    return _inFlightAudio.putIfAbsent(url, () async {
+      try {
+        return await _fetchAudioBytesUncached(url);
+      } finally {
+        _inFlightAudio.remove(url);
+      }
+    });
+  }
 
+  Future<Uint8List?> _fetchAudioBytesUncached(String url) async {
     final dio = Dio(
       BaseOptions(
         responseType: ResponseType.bytes,
@@ -509,7 +520,7 @@ class VoiceGuide {
         return null;
       }
       final bytes = Uint8List.fromList(raw);
-      if (_memAudioCache.length >= 40) {
+      if (_memAudioCache.length >= 160) {
         _memAudioCache.remove(_memAudioCache.keys.first);
       }
       _memAudioCache[url] = bytes;
@@ -522,14 +533,15 @@ class VoiceGuide {
     }
   }
 
-  /// Pré-chauffe les prochaines consignes en arrière-plan pour éviter l'attente GPU au virage.
+  /// Pré-chauffe les prochaines consignes par fenêtre glissante pour éviter toute latence sur longs trajets (> 100 km).
   Future<void> prefetchSteps(
     List<GuideStep> steps, {
     required String language,
-    int maxSteps = 3,
+    int startIndex = 0,
+    int maxSteps = 6,
   }) async {
     final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
-    if (isTest || steps.isEmpty) return;
+    if (isTest || steps.isEmpty || startIndex >= steps.length) return;
 
     final langNorm = language.toLowerCase().trim();
     if (langNorm != 'mos' &&
@@ -540,15 +552,26 @@ class VoiceGuide {
       return;
     }
 
-    final limit = steps.length < maxSteps ? steps.length : maxSteps;
-    for (var i = 0; i < limit; i++) {
+    final start = startIndex < 0 ? 0 : startIndex;
+    final end = (start + maxSteps) < steps.length ? (start + maxSteps) : steps.length;
+    final urlsToFetch = <String>[];
+    for (var i = start; i < end; i++) {
       final step = steps[i];
       for (final dist in const [200.0, 50.0]) {
         final url = step.audioFor(dist: dist, language: langNorm);
-        if (url != null && url.startsWith('http') && !_memAudioCache.containsKey(url)) {
-          await _fetchAudioBytesIfReady(url);
+        if (url != null &&
+            url.startsWith('http') &&
+            !_memAudioCache.containsKey(url) &&
+            !urlsToFetch.contains(url)) {
+          urlsToFetch.add(url);
         }
       }
+    }
+
+    // Téléchargement par paires concurrentes pour saturer le cache sans surcharger le GPU
+    for (var i = 0; i < urlsToFetch.length; i += 2) {
+      final batch = urlsToFetch.skip(i).take(2).map(_fetchAudioBytesIfReady);
+      await Future.wait(batch);
     }
   }
 

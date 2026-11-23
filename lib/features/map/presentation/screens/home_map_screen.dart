@@ -650,6 +650,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       if (targetIndex != ref.read(currentManeuverIndexProvider)) {
         ref.read(currentManeuverIndexProvider.notifier).setIndex(targetIndex);
         ref.read(voiceGuideProvider).clearBanner();
+        unawaited(
+          ref.read(voiceGuideProvider).prefetchSteps(
+            _guideSteps,
+            language: lang,
+            startIndex: targetIndex,
+            maxSteps: 6,
+          ),
+        );
       }
     }
 
@@ -3714,7 +3722,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     places: ref.read(placesStateProvider).placesList,
                   );
                   final vg = ref.read(voiceGuideProvider);
-                  unawaited(vg.prefetchSteps(_guideSteps, language: newLang));
+                  unawaited(
+                    vg.prefetchSteps(
+                      _guideSteps,
+                      language: newLang,
+                      startIndex: ref.read(currentManeuverIndexProvider),
+                      maxSteps: 6,
+                    ),
+                  );
                   final localized = _liveManeuverDisplay(activeLang: newLang).instructionText;
                   vg.say(localized, language: newLang);
                 }

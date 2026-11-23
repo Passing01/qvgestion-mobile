@@ -110,7 +110,7 @@ class RouteGeometry {
       final d = math.sqrt((q.dx - px) * (q.dx - px) + (q.dy - py) * (q.dy - py));
       if (d < best) {
         best = d;
-        bestAlong = cum[i] + t * math.sqrt(len2);
+        bestAlong = cum[i] + t * (cum[i + 1] - cum[i]);
         bestSeg = i;
         bestSnapped = LatLng(
           pts[i].latitude + t * (pts[i + 1].latitude - pts[i].latitude),
