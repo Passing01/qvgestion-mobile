@@ -48,12 +48,16 @@ class RouteGeometry {
 
   double get total => cum.isEmpty ? 0.0 : cum.last;
 
-  /// Distance approximative locale en mètres entre deux coordonnées
+  /// Distance géodésique exacte (Haversine) en mètres entre deux coordonnées
   static double _dist(LatLng a, LatLng b) {
-    final dx =
-        (b.longitude - a.longitude) * math.cos(a.latitude * math.pi / 180) * 111320;
-    final dy = (b.latitude - a.latitude) * 110540;
-    return math.sqrt(dx * dx + dy * dy);
+    const r = 6371000.0;
+    final phi1 = a.latitude * math.pi / 180.0;
+    final phi2 = b.latitude * math.pi / 180.0;
+    final dPhi = (b.latitude - a.latitude) * math.pi / 180.0;
+    final dLam = (b.longitude - a.longitude) * math.pi / 180.0;
+    final h = math.sin(dPhi / 2) * math.sin(dPhi / 2) +
+        math.cos(phi1) * math.cos(phi2) * math.sin(dLam / 2) * math.sin(dLam / 2);
+    return 2.0 * r * math.atan2(math.sqrt(h), math.sqrt(math.max(0.0, 1.0 - h)));
   }
 
   Offset _xy(LatLng p) => Offset(

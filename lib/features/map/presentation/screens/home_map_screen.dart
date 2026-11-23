@@ -101,6 +101,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   NavigationEngine? _navEngine;
   NavUpdate? _lastNavUpdate;
   double _currentSpeedKmh = 0.0;
+  double? _smoothedSpeedMps;
   String? _rerouteErrorBanner;
   bool _isReroutingInFlight = false;
   bool _arrivalAnnounced = false;
@@ -593,6 +594,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       setState(() {
         _lastNavUpdate = u;
         _currentSpeedKmh = speedKmh;
+        if (speedKmh >= 4.0 && accuracy <= 40.0) {
+          final currentMps = speedKmh / 3.6;
+          _smoothedSpeedMps = _smoothedSpeedMps == null
+              ? currentMps
+              : (_smoothedSpeedMps! * 0.7 + currentMps * 0.3);
+        }
       });
     }
 
@@ -623,15 +630,12 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     _ensureSmoothMotionTicker();
     _maybeRefreshRadarScene(displayPos.latitude, displayPos.longitude);
 
-    // Étape 9a · Annonceur pas-à-pas à 200m et 50m (fenêtre 40m, sans répétition)
+    // Calcul réactif de l'étape de navigation courante AVANT l'annonce vocale
+    // pour garantir que la voix et l'écran parlent toujours du même virage.
     final lang = ref.read(guidanceLanguageProvider);
-    if (_announcer != null && _guideSteps.isNotEmpty) {
-      _announcer!.onProgress(u.along, _guideSteps, language: lang);
-    }
-
-    // Calcul réactif de l'étape de navigation courante
+    int targetIndex = ref.read(currentManeuverIndexProvider);
     if (_guideSteps.isNotEmpty) {
-      int targetIndex = _guideSteps.length - 1;
+      targetIndex = _guideSteps.length - 1;
       for (var i = 0; i < _guideSteps.length; i++) {
         if (i == 0 &&
             _guideSteps.length > 1 &&
@@ -647,6 +651,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         ref.read(currentManeuverIndexProvider.notifier).setIndex(targetIndex);
         ref.read(voiceGuideProvider).clearBanner();
       }
+    }
+
+    // Étape 9a · Annonceur pas-à-pas synchronisé sur l'étape active (200 m et 50 m)
+    if (_announcer != null && _guideSteps.isNotEmpty) {
+      _announcer!.onProgress(
+        u.along,
+        _guideSteps,
+        language: lang,
+        activeStepIndex: targetIndex,
+      );
     }
 
     // Règle 5 : Arrivée réelle à <= 25 m après >= 90 % du parcours sur 2 points consécutifs
@@ -890,6 +904,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     // Initialisation du moteur de navigation (Étape 8)
     _navEngine = NavigationEngine(geom);
+    _smoothedSpeedMps = null;
     _arrivalAnnounced = false;
     _rerouteErrorBanner = null;
     _isReroutingInFlight = false;
@@ -3127,9 +3142,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       final rawRemainingToTurn = _lastNavUpdate != null
           ? math.max(0.0, step.along - _lastNavUpdate!.along)
           : (step.along > 0 ? step.along : step.distanceMeters);
-      final displayMeters = rawRemainingToTurn >= 200.0
-          ? ((rawRemainingToTurn / 10.0).round() * 10.0)
-          : rawRemainingToTurn;
+      final displayMeters = GuideStep.alignedDisplayMeters(rawRemainingToTurn);
       final distText = displayMeters >= 1000.0
           ? '${(displayMeters / 1000.0).toStringAsFixed(1)} km'
           : '${displayMeters.round()} m';
@@ -3604,24 +3617,41 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                   ? 'Quartier ${selectedPlace!.quartier}'
                   : 'Axe principal de Ouagadougou');
 
-        // Calcul temps réel de la distance et durée restantes (Étape 8 - Règle 6)
+        // Calcul temps réel de la distance, durée restante et heure d'arrivée estimée (Étape 8 - Règle 6)
         String liveRemainingDistance;
         String liveRemainingTime;
         if (_lastNavUpdate != null) {
           final remM = _lastNavUpdate!.remaining;
-          liveRemainingDistance = remM >= 1000
+          final distLabel = remM >= 1000
               ? '${(remM / 1000).toStringAsFixed(1)} km'
               : '${remM.round()} m';
           final totalM =
               _navEngine?.route.total ?? (route?.distanceMeters ?? 0);
           final baseDurS = route?.durationSeconds ?? 540;
-          if (totalM > 0) {
-            final remSec = (baseDurS * (remM / totalM)).round();
+          if (totalM > 0 && baseDurS > 0) {
+            final baseSpeedMps = totalM / baseDurS;
+            final effSpeedMps = _smoothedSpeedMps != null
+                ? (baseSpeedMps * 0.65 + _smoothedSpeedMps! * 0.35)
+                    .clamp(baseSpeedMps * 0.5, baseSpeedMps * 1.6)
+                : baseSpeedMps;
+            final remSec = remM <= 25 ? 0 : (remM / effSpeedMps).round();
             final remMin = (remSec / 60).ceil();
-            liveRemainingTime = remM <= 25
-                ? '0 min'
-                : '${math.max(1, remMin)} min';
+            if (remM <= 25) {
+              liveRemainingTime = '0 min';
+            } else if (remMin >= 60) {
+              final h = remMin ~/ 60;
+              final m = remMin % 60;
+              liveRemainingTime = '$h h ${m.toString().padLeft(2, '0')}';
+            } else {
+              liveRemainingTime = '${math.max(1, remMin)} min';
+            }
+            final eta = DateTime.now().add(Duration(seconds: remSec));
+            final etaStr =
+                '${eta.hour.toString().padLeft(2, '0')}:${eta.minute.toString().padLeft(2, '0')}';
+            liveRemainingDistance =
+                remM <= 25 ? distLabel : '$distLabel • $etaStr';
           } else {
+            liveRemainingDistance = distLabel;
             liveRemainingTime =
                 enrichedRoute?.totalDurationFormatted ??
                 route?.durationFormatted ??

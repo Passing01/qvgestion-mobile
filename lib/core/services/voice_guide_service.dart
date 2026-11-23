@@ -85,6 +85,18 @@ class GuideStep {
     return 'fr';
   }
 
+  /// Arrondi canonique partagé entre l'affichage écran et les annonces vocales
+  /// pour garantir une cohérence parfaite du métrage.
+  static double alignedDisplayMeters(double rawMeters) {
+    if (!rawMeters.isFinite || rawMeters <= 0) return 0.0;
+    if (rawMeters >= 1000.0) return (rawMeters / 100.0).round() * 100.0;
+    if (rawMeters >= 190.0 && rawMeters <= 210.0) return 200.0;
+    if (rawMeters >= 100.0) return (rawMeters / 10.0).round() * 10.0;
+    if (rawMeters >= 40.0 && rawMeters <= 58.0) return 50.0;
+    if (rawMeters >= 30.0) return (rawMeters / 5.0).round() * 5.0;
+    return rawMeters.roundToDouble();
+  }
+
   /// Résout la source audio pour cette distance et cette langue.
   /// Privilégie la voix neuronale dynamique (/guidance/tts) plutôt que les fichiers WhatsApp statiques.
   String? audioFor({required double dist, String language = 'fr'}) {
@@ -344,6 +356,7 @@ class VoiceGuide {
 
   bool _ok = false;
   bool get isOk => _ok;
+  int _speakSeq = 0;
 
   /// Cache mémoire de session pour rejeu instantané (< 5 ms) des audios TTS générés
   final Map<String, Uint8List> _memAudioCache = <String, Uint8List>{};
@@ -352,6 +365,7 @@ class VoiceGuide {
   final banner = ValueNotifier<String>('');
 
   void clearBanner() {
+    _speakSeq++;
     banner.value = '';
   }
 
@@ -388,6 +402,7 @@ class VoiceGuide {
     String? frenchFallbackText,
     String maneuverType = '',
   }) async {
+    final mySeq = ++_speakSeq;
     AppLogger.i('[VOIX] $text');
     banner.value = text; // Le texte s'affiche toujours
 
@@ -411,15 +426,18 @@ class VoiceGuide {
         if (player != null) {
           await player.stop();
           if (effectiveAudioSource.startsWith('assets/')) {
+            if (_speakSeq != mySeq) return;
             await player.play(AssetSource(effectiveAudioSource.replaceFirst('assets/', '')));
             audioPlayed = true;
           } else if (effectiveAudioSource.startsWith('http')) {
             final bytes = await _fetchAudioBytesIfReady(effectiveAudioSource);
+            if (_speakSeq != mySeq) return; // Annulé si une annonce plus récente a remplacé celle-ci
             if (bytes != null && bytes.isNotEmpty) {
               await player.play(BytesSource(bytes));
               audioPlayed = true;
             }
           } else {
+            if (_speakSeq != mySeq) return;
             await player.play(DeviceFileSource(effectiveAudioSource));
             audioPlayed = true;
           }
@@ -429,6 +447,8 @@ class VoiceGuide {
         audioPlayed = false;
       }
     }
+
+    if (_speakSeq != mySeq) return;
 
     // Repli vocal humain Mooré natif enregistré si le serveur TTS Mooré renvoie 503 / est hors ligne
     if (!audioPlayed && (!isTest || _customPlayer != null)) {
@@ -512,7 +532,13 @@ class VoiceGuide {
     if (isTest || steps.isEmpty) return;
 
     final langNorm = language.toLowerCase().trim();
-    if (langNorm != 'mos' && langNorm != 'moore' && langNorm != 'fr') return;
+    if (langNorm != 'mos' &&
+        langNorm != 'moore' &&
+        langNorm != 'diu' &&
+        langNorm != 'dioula' &&
+        langNorm != 'fr') {
+      return;
+    }
 
     final limit = steps.length < maxSteps ? steps.length : maxSteps;
     for (var i = 0; i < limit; i++) {
@@ -632,8 +658,10 @@ class Announcer {
     double along,
     List<GuideStep> steps, {
     String language = 'fr',
+    int? activeStepIndex,
   }) {
     for (var i = 0; i < steps.length; i++) {
+      if (activeStepIndex != null && i != activeStepIndex) continue;
       final d = steps[i].along - along; // mètres avant le virage
       if (d < 5.0) continue;
 
@@ -645,9 +673,7 @@ class Announcer {
       for (final t in const [200.0, 50.0]) {
         final key = '$i-${t.toInt()}';
         if (d <= t && d > t - 40 && _spoken.add(key)) {
-          final spokenDist = t == 200.0
-              ? ((d >= 180.0 && d <= 210.0) ? 200.0 : (d / 10.0).round() * 10.0)
-              : ((d >= 35.0 && d <= 60.0) ? 50.0 : (d / 5.0).round() * 5.0);
+          final spokenDist = GuideStep.alignedDisplayMeters(d);
           voice.say(
             steps[i].spoken(dist: spokenDist, language: language),
             audioSource: steps[i].audioFor(dist: spokenDist, language: language),
@@ -679,6 +705,12 @@ List<GuideStep> buildGuideSteps({
   int? lastSegmentHint;
   double prevAlong = 0.0;
 
+  final coreEnriched = (enrichedRoute != null)
+      ? enrichedRoute.enrichedManeuvers
+          .where((e) => e.maneuverType.toLowerCase() != 'reassurance')
+          .toList()
+      : const [];
+
   for (var i = 0; i < route.maneuvers.length; i++) {
     final m = route.maneuvers[i];
     final proj = geom.project(
@@ -692,9 +724,7 @@ List<GuideStep> buildGuideSteps({
       prevAlong = stepAlong;
     }
 
-    final enriched = (enrichedRoute != null && i < enrichedRoute.enrichedManeuvers.length)
-        ? enrichedRoute.enrichedManeuvers[i]
-        : null;
+    final enriched = (i < coreEnriched.length) ? coreEnriched[i] : null;
 
     // Correction phonétique name_tts pour les noms difficiles
     String? nameTts;
