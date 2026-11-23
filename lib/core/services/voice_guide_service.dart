@@ -345,6 +345,9 @@ class VoiceGuide {
   bool _ok = false;
   bool get isOk => _ok;
 
+  /// Cache mémoire de session pour rejeu instantané (< 5 ms) des audios TTS générés
+  final Map<String, Uint8List> _memAudioCache = <String, Uint8List>{};
+
   /// Bandeau de consigne toujours affiché en gros à l'écran
   final banner = ValueNotifier<String>('');
 
@@ -466,11 +469,16 @@ class VoiceGuide {
   }
 
   Future<Uint8List?> _fetchAudioBytesIfReady(String url) async {
+    final cached = _memAudioCache[url];
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
     final dio = Dio(
       BaseOptions(
         responseType: ResponseType.bytes,
-        connectTimeout: const Duration(milliseconds: 2500),
-        receiveTimeout: const Duration(milliseconds: 6500),
+        connectTimeout: const Duration(milliseconds: 4000),
+        receiveTimeout: const Duration(milliseconds: 15000),
         validateStatus: (status) => status == 200,
       ),
     );
@@ -480,12 +488,41 @@ class VoiceGuide {
       if (res.statusCode != 200 || raw == null || raw.length <= 64) {
         return null;
       }
-      return Uint8List.fromList(raw);
+      final bytes = Uint8List.fromList(raw);
+      if (_memAudioCache.length >= 40) {
+        _memAudioCache.remove(_memAudioCache.keys.first);
+      }
+      _memAudioCache[url] = bytes;
+      return bytes;
     } catch (e) {
       AppLogger.w('[VOIX] TTS distant indisponible ($e)');
       return null;
     } finally {
       dio.close();
+    }
+  }
+
+  /// Pré-chauffe les prochaines consignes en arrière-plan pour éviter l'attente GPU au virage.
+  Future<void> prefetchSteps(
+    List<GuideStep> steps, {
+    required String language,
+    int maxSteps = 3,
+  }) async {
+    final isTest = WidgetsBinding.instance.runtimeType.toString().contains('Test');
+    if (isTest || steps.isEmpty) return;
+
+    final langNorm = language.toLowerCase().trim();
+    if (langNorm != 'mos' && langNorm != 'moore' && langNorm != 'fr') return;
+
+    final limit = steps.length < maxSteps ? steps.length : maxSteps;
+    for (var i = 0; i < limit; i++) {
+      final step = steps[i];
+      for (final dist in const [200.0, 50.0]) {
+        final url = step.audioFor(dist: dist, language: langNorm);
+        if (url != null && url.startsWith('http') && !_memAudioCache.containsKey(url)) {
+          await _fetchAudioBytesIfReady(url);
+        }
+      }
     }
   }
 

@@ -955,6 +955,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       enrichedRoute: freshEnriched ?? enriched,
       places: places,
     );
+    unawaited(voiceGuide.prefetchSteps(_guideSteps, language: activeLang));
     _processNavigationFix(userLatLng, initAcc, initSpeed, DateTime.now());
     if (mounted) {
       AppSnackbar.showSuccess(
@@ -3682,14 +3683,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     enrichedRoute: newEnriched,
                     places: ref.read(placesStateProvider).placesList,
                   );
-                  final localized =
-                      ref
-                          .read(currentEnrichedManeuverProvider)
-                          ?.localizedInstruction ??
-                      nextInstruction;
-                  ref
-                      .read(voiceGuideProvider)
-                      .say(localized, language: newLang);
+                  final vg = ref.read(voiceGuideProvider);
+                  unawaited(vg.prefetchSteps(_guideSteps, language: newLang));
+                  final localized = _liveManeuverDisplay(activeLang: newLang).instructionText;
+                  vg.say(localized, language: newLang);
                 }
               },
               onNextStep: () {
