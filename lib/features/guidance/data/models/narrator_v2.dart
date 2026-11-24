@@ -75,21 +75,21 @@ class NarrativeStep extends Equatable {
     if (lang == 'mos' || lang == 'moore') {
       switch (key) {
         case 'at_signal_turn':
-          return 'Feo zĩisẽ, gilli $sideStr';
+          return 'Fɩ wã nengẽ, lɛbg $sideStr';
         case 'after_anchor_turn':
           return '$anchorName poore, rɩk $clsStr $ordStr $sideStr';
         case 'after_anchor_plain':
-          return '$anchorName poore, gilli $sideStr';
+          return '$anchorName poore, lɛbg $sideStr';
         case 'turn_count':
           return 'Rɩk $clsStr $ordStr $sideStr';
         case 'turn_dist':
-          return 'Kẽng tao mɛtr $dist, rabo gilli $sideStr';
+          return 'Tũ sorã mɛtɛr $dist, n lɛbg $sideStr';
         case 'straight_to_anchor':
-          return 'Kẽng tao hal tɩ tãag $anchorName, rabo lʋɩ tao';
+          return 'Tũ sorã tɩrga hal tɩ ta $anchorName, n looge';
         case 'roundabout_exit':
-          return 'Rõ-pwɛ zĩisẽ, rɩk bʋlg $ordStr';
+          return 'Rond-point wã nengẽ, rɩk sorã $ordStr';
         default:
-          return 'Gilli $sideStr';
+          return 'Lɛbg $sideStr';
       }
     } else if (lang == 'diu' || lang == 'dioula') {
       switch (key) {
@@ -135,9 +135,9 @@ class NarrativeStep extends Equatable {
 
   static String _formatSide(String side, String lang) {
     if (lang == 'mos' || lang == 'moore') {
-      if (side == 'left') return 'wĩndg-goabga';
-      if (side == 'right') return 'wĩndg-rɩtgo';
-      return 'tao';
+      if (side == 'left') return 'goabga';
+      if (side == 'right') return 'rɩtgo';
+      return 'taore';
     }
     if (lang == 'diu' || lang == 'dioula') {
       if (side == 'left') return 'numanya fɛ';

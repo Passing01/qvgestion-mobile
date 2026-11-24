@@ -92,7 +92,7 @@ void main() {
       expect(steps.first.key, 'at_signal_turn');
       expect(steps.first.confidence, 3);
       expect(steps.first.render(language: 'fr'), 'Au feu, tournez à gauche');
-      expect(steps.first.render(language: 'mos'), 'Feo zĩisẽ, gilli wĩndg-goabga');
+      expect(steps.first.render(language: 'mos'), 'Fɩ wã nengẽ, lɛbg goabga');
       expect(steps.first.render(language: 'diu'), 'Fe la, kɛlɛbili numanya fɛ');
     });
 

@@ -196,19 +196,34 @@ class _ExploreOuagaDrawerState extends ConsumerState<ExploreOuagaDrawer> {
   List<IconicPlaceItem> _buildDiscoveryItems(
     double lat,
     double lon,
+    List<PlaceModel> featuredWithPhotos,
     List<PlaceModel> nearbyPlaces,
   ) {
-    final sortedNearby = List<PlaceModel>.from(nearbyPlaces)
+    // Fusionner d'abord tous les lieux ayant des photos (featured + nearby) pour qu'aucune image Admin ne soit cachée
+    final combinedById = <int, PlaceModel>{};
+    for (final p in featuredWithPhotos) {
+      combinedById[p.id] = p;
+    }
+    for (final p in nearbyPlaces) {
+      combinedById.putIfAbsent(p.id, () => p);
+    }
+    final sortedAll = combinedById.values.toList()
       ..sort((a, b) {
+        final aHasImg = a.photos.isNotEmpty ? 1 : 0;
+        final bHasImg = b.photos.isNotEmpty ? 1 : 0;
+        if (aHasImg != bHasImg) return bHasImg.compareTo(aHasImg);
         final da = BurkinaGeoHelper.distanceMeters(lat, lon, a.latitude, a.longitude);
         final db = BurkinaGeoHelper.distanceMeters(lat, lon, b.latitude, b.longitude);
         return da.compareTo(db);
       });
 
     final localCards = <IconicPlaceItem>[];
-    for (final p in sortedNearby) {
+    for (final p in sortedAll) {
+      final hasPhoto = p.photos.isNotEmpty;
       final kind = _classifyPlace(p);
-      if (kind == null) continue;
+      // Toute fiche avec photo doit apparaître dans Explorer (même pharmacie/boutique/service)
+      if (kind == null && !hasPhoto) continue;
+      final effectiveKind = kind ?? ExploreDiscoveryFilter.all;
       final distM = BurkinaGeoHelper.distanceMeters(lat, lon, p.latitude, p.longitude);
       final distText = distM >= 1000
           ? '${(distM / 1000).toStringAsFixed(1)} km'
@@ -219,7 +234,7 @@ class _ExploreOuagaDrawerState extends ConsumerState<ExploreOuagaDrawer> {
       late final IconData icon;
       late final String gStart;
       late final String gEnd;
-      switch (kind) {
+      switch (effectiveKind) {
         case ExploreDiscoveryFilter.hotels:
           badge = 'Hôtel';
           color = const Color(0xFF7C3AED);
@@ -233,12 +248,17 @@ class _ExploreOuagaDrawerState extends ConsumerState<ExploreOuagaDrawer> {
           gStart = '#9A3412';
           gEnd = '#F97316';
         case ExploreDiscoveryFilter.tourism:
-        case ExploreDiscoveryFilter.all:
           badge = 'Site touristique';
           color = const Color(0xFF047857);
           icon = Icons.tour_rounded;
           gStart = '#065F46';
           gEnd = '#10B981';
+        case ExploreDiscoveryFilter.all:
+          badge = p.categorie?.nom ?? 'À découvrir';
+          color = const Color(0xFF0F766E);
+          icon = Icons.place_rounded;
+          gStart = '#0F766E';
+          gEnd = '#14B8A6';
       }
 
       localCards.add(
@@ -254,11 +274,11 @@ class _ExploreOuagaDrawerState extends ConsumerState<ExploreOuagaDrawer> {
           gradientStart: gStart,
           gradientEnd: gEnd,
           icon: icon,
-          imageUrl: p.photos.isNotEmpty ? p.photos.first : null,
-          kind: kind,
+          imageUrl: hasPhoto ? p.photos.first : null,
+          kind: effectiveKind,
         ),
       );
-      if (localCards.length >= 12) break;
+      if (localCards.length >= 16) break;
     }
 
     // Priorise d'abord les incontournables de la région détectée tout en gardant l'ordre curaté dans la même ville
@@ -310,9 +330,12 @@ class _ExploreOuagaDrawerState extends ConsumerState<ExploreOuagaDrawer> {
   @override
   Widget build(BuildContext context) {
     final nearbyPlaces = ref.watch(placesStateProvider).placesList;
+    final featuredPlaces =
+        ref.watch(featuredPlacesWithPhotosProvider).value ?? const <PlaceModel>[];
     final loc = ref.watch(currentLocationProvider);
     final zone = _detectUserZone(loc.lat, loc.lon, nearbyPlaces);
-    final items = _buildDiscoveryItems(loc.lat, loc.lon, nearbyPlaces);
+    final items =
+        _buildDiscoveryItems(loc.lat, loc.lon, featuredPlaces, nearbyPlaces);
     final subtitleZone = zone.quartier != null
         ? 'Autour de ${zone.quartier} (${zone.city}) • ${zone.region}'
         : 'Zone : ${zone.city} • Région ${zone.region}';

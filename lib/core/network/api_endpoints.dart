@@ -13,6 +13,7 @@ class ApiEndpoints {
   static const String places = '/places/';
   static const String placesNearby = '/places/nearby';
   static const String placesSearch = '/places/search';
+  static const String placesFeatured = '/places/featured';
   static const String placesNeighborhoods = '/places/neighborhoods';
   static const String search = '/search';
   static const String searchAliases = '/search/aliases';

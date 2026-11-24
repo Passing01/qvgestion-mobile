@@ -181,31 +181,31 @@ class GuideStep {
     final action = _actionMoore(maneuverType);
 
     if (maneuverType == 'arrive') {
-      return 'Y taame y zĩigẽ';
+      return 'Y taa y sẽn dabd zĩigẽ';
     }
     if (maneuverType == 'depart') {
       return 'Rɩk sorã';
     }
 
     final distPhrase = dist >= 1000.0
-        ? 'Kilomɛtr ${(dist / 1000.0).round()}'
-        : 'Mɛtr ${dist.toInt()}';
+        ? 'Kilomɛtɛr ${(dist / 1000.0).round()}'
+        : 'Mɛtɛr ${dist.toInt()}';
 
     if (confidence >= 2 && effectiveAnchor.isNotEmpty) {
       if (anchorType == 'traffic_signal' || anchorType == 'feu') {
         return dist >= 100.0
-            ? '$distPhrase poore, feu wã nengẽ, $action'
-            : 'Feu wã nengẽ, $action';
+            ? '$distPhrase poore, fɩ wã nengẽ, $action'
+            : 'Fɩ wã nengẽ, $action';
       } else {
         return dist >= 100.0
-            ? '$distPhrase poore, $effectiveAnchor poore, $action'
+            ? '$distPhrase poore, y sã n loog $effectiveAnchor, $action'
             : '$effectiveAnchor poore, $action';
       }
     }
 
     return dist >= 100.0
         ? '$distPhrase poore, $action'
-        : 'Taore mɛtr ${dist.toInt()}, $action';
+        : 'Taore mɛtɛr ${dist.toInt()}, $action';
   }
 
   /// Asset audio humain natif en Mooré enregistré localement (fallback garanti si TTS neuronal indisponible)
@@ -303,17 +303,17 @@ class GuideStep {
       case 'left':
       case 'slight_left':
       case 'sharp_left':
-        return 'gilli wĩndg-goabga';
+        return 'lɛbg goabga';
       case 'turn_right':
       case 'right':
       case 'slight_right':
       case 'sharp_right':
-        return 'gilli wĩndg-rɩtgo';
+        return 'lɛbg rɩtgo';
       case 'roundabout':
-        return 'rond-point wã zugu, rɩk sorã';
+        return 'rond-point wã nengẽ, tũ sorã';
       case 'straight':
       default:
-        return 'kẽng tɩrga';
+        return 'tũ sorã tɩrga';
     }
   }
 

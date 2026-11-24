@@ -9,6 +9,7 @@ class PoiPreviewCard extends StatelessWidget {
   final String status;
   final String? culturalLandmark;
   final List<String> tags;
+  final String? imageUrl;
   final VoidCallback onNavigateMoto;
   final VoidCallback onNavigateAuto;
   final VoidCallback? onNavigateVelo;
@@ -23,6 +24,7 @@ class PoiPreviewCard extends StatelessWidget {
     this.status = 'Ouvert actuellement',
     this.culturalLandmark,
     this.tags = const ['Goudronné', 'Piste deux-roues', '24h/24'],
+    this.imageUrl,
     required this.onNavigateMoto,
     required this.onNavigateAuto,
     this.onNavigateVelo,
@@ -50,6 +52,19 @@ class PoiPreviewCard extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (imageUrl != null && imageUrl!.isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.network(
+                imageUrl!,
+                height: 105,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           // En-tête avec titre, catégorie et bouton fermer
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,

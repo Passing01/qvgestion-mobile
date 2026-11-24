@@ -3534,6 +3534,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             tags: tags.isNotEmpty
                 ? tags
                 : const ['Accessible deux-roues', 'Ouvert'],
+            imageUrl: selectedPlace.photos.isNotEmpty
+                ? selectedPlace.photos.first
+                : null,
             onNavigateMoto: () {
               _startRouteCalculation(
                 destinationPlace: selectedPlace,
@@ -3579,7 +3582,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             setState(() => _isDrawerCollapsed = true);
           },
           onPlaceTap: (iconic) {
-            // Créer ou sélectionner un lieu correspondant
+            // Créer ou sélectionner un lieu correspondant (avec sa photo si présente)
             final place = PlaceModel(
               id: 99,
               nom: iconic.title,
@@ -3587,6 +3590,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               latitude: iconic.latitude,
               longitude: iconic.longitude,
               quartier: iconic.subtitle,
+              photos: iconic.imageUrl != null ? [iconic.imageUrl!] : const [],
               distanceMeters: iconic.distance != null ? 2400.0 : null,
             );
             ref.read(selectedPlaceProvider.notifier).select(place);

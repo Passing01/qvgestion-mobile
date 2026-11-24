@@ -121,7 +121,7 @@ void main() {
         language: 'mos',
         now: t0,
       );
-      expect(voiceGuide.banner.value, contains('Kilomɛtr 3'));
+      expect(voiceGuide.banner.value, contains('Kilomɛtɛr 3'));
 
       // 20 s plus tard à 2100 m : pas encore 45 s -> silencieux
       announcer.onProgress(
@@ -146,7 +146,7 @@ void main() {
         now: t0.add(const Duration(seconds: 50)),
       );
       expect(spokenTexts.length, 2);
-      expect(voiceGuide.banner.value, contains('Kilomɛtr 2'));
+      expect(voiceGuide.banner.value, contains('Kilomɛtɛr 2'));
     });
   });
 
@@ -269,14 +269,14 @@ void main() {
         anchorName: 'Rond-Point Patte d\'Oie',
       );
 
-      // Mooré
+      // Mooré courant
       final spokenMoore200 = stepTurn.spoken(dist: 200, language: 'mos');
-      expect(spokenMoore200, contains('Mɛtr 200 poore'));
-      expect(spokenMoore200, contains('Rond-Point Patte d\'Oie poore'));
-      expect(spokenMoore200, contains('gilli wĩndg-rɩtgo'));
+      expect(spokenMoore200, contains('Mɛtɛr 200 poore'));
+      expect(spokenMoore200, contains('Rond-Point Patte d\'Oie'));
+      expect(spokenMoore200, contains('lɛbg rɩtgo'));
 
       final spokenMoore50 = stepTurn.spoken(dist: 50, language: 'mos');
-      expect(spokenMoore50, 'Rond-Point Patte d\'Oie poore, gilli wĩndg-rɩtgo');
+      expect(spokenMoore50, 'Rond-Point Patte d\'Oie poore, lɛbg rɩtgo');
 
       // Dioula
       final spokenDioula200 = stepTurn.spoken(dist: 200, language: 'diu');

@@ -818,4 +818,31 @@ class PlacesRepository {
     }
     return const {'type': 'FeatureCollection', 'features': []};
   }
+
+  /// Lieux validés possédant des photos pour la section Explorer de l'accueil
+  Future<List<PlaceModel>> getFeaturedPlacesWithPhotos({
+    double? lat,
+    double? lon,
+    int limit = 30,
+  }) async {
+    try {
+      final response = await apiClient.get<dynamic>(
+        ApiEndpoints.placesFeatured,
+        queryParameters: {
+          'lat': ?lat,
+          'lon': ?lon,
+          'limit': limit,
+        },
+      );
+      final list = response.data as List<dynamic>? ?? const [];
+      return list
+          .whereType<Map>()
+          .map((item) => PlaceModel.fromJson(Map<String, dynamic>.from(item)))
+          .where((p) => p.photos.isNotEmpty)
+          .toList();
+    } catch (e) {
+      AppLogger.d('Lieux mis en avant avec photos indisponibles: $e');
+      return const [];
+    }
+  }
 }

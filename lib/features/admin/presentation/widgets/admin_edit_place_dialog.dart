@@ -83,6 +83,8 @@ class _AdminEditPlaceDialogState extends ConsumerState<AdminEditPlaceDialog> {
     ref.invalidate(adminPlacesProvider);
     ref.invalidate(adminDashboardStatsProvider);
     ref.invalidate(neighborhoodsGeoJsonProvider);
+    ref.invalidate(featuredPlacesWithPhotosProvider);
+    ref.invalidate(placeDetailProvider(widget.place.id.toString()));
   }
 
   Future<void> _pickAndUploadPhoto() async {

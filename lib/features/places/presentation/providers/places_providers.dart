@@ -1755,3 +1755,10 @@ final myFavoritesProvider = FutureProvider<List<PlaceModel>>((ref) async {
   final repository = ref.watch(placesRepositoryProvider);
   return repository.getMyFavorites();
 });
+
+/// Lieux enrichis de photos (mis à jour en direct lorsqu'un admin ajoute une image)
+final featuredPlacesWithPhotosProvider = FutureProvider<List<PlaceModel>>((ref) async {
+  final repository = ref.watch(placesRepositoryProvider);
+  final loc = ref.watch(currentLocationProvider);
+  return repository.getFeaturedPlacesWithPhotos(lat: loc.lat, lon: loc.lon);
+});
