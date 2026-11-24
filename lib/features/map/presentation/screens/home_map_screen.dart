@@ -3454,7 +3454,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             status: selectedPlace.horaires ?? 'Ouvert 24h/24',
             culturalLandmark: selectedPlace.quartier != null
                 ? 'Quartier ${selectedPlace.quartier}'
-                : (selectedPlace.adresse ?? 'Ouagadougou'),
+                : (selectedPlace.adresse ?? selectedPlace.ville),
             tags: tags.isNotEmpty
                 ? tags
                 : const ['Accessible deux-roues', 'Ouvert'],

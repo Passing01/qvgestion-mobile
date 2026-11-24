@@ -47,6 +47,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
   String _spokenText = '';
   String _selectedLanguage = 'fr'; // 'mos', 'diu', 'fr'
   String _statusMessage = 'Appuyez pour parler en Mooré, Dioula ou Français';
+  List<PlaceModel> _matchedPlaces = const [];
 
   AudioRecorder? _asrRecorder;
   StreamSubscription<Uint8List>? _asrStreamSub;
@@ -301,6 +302,7 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
           _isListening = true;
           _isRecordingAsr = true;
           _spokenText = '';
+          _matchedPlaces = const [];
           _statusMessage =
               'Parlez en ${_langDisplayName(_selectedLanguage)}... Touchez le micro pour envoyer';
         });
@@ -409,6 +411,39 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
     }
   }
 
+  static const Set<String> _frStopWords = {
+    'a', 'au', 'aux', 'avec', 'chez', 'd', 'dans', 'de', 'des', 'du',
+    'en', 'et', 'l', 'la', 'le', 'les', 'ou', 'par', 'pour', 'pres',
+    'sur', 'sous', 'un', 'une', 'vers',
+  };
+
+  List<String> _extractKeywords(String input) {
+    final cleaned = input
+        .toLowerCase()
+        .replaceAll(RegExp(r"[àâä]"), 'a')
+        .replaceAll(RegExp(r"[éèêë]"), 'e')
+        .replaceAll(RegExp(r"[îï]"), 'i')
+        .replaceAll(RegExp(r"[ôö]"), 'o')
+        .replaceAll(RegExp(r"[ùûü]"), 'u')
+        .replaceAll('ç', 'c')
+        .replaceAll(RegExp(r"[^\w\s]"), ' ');
+    final tokens = cleaned
+        .split(RegExp(r'\s+'))
+        .where((w) => w.length > 1 && !_frStopWords.contains(w))
+        .toSet()
+        .toList();
+    return tokens;
+  }
+
+  bool _placeMatchesKeywords(String query, PlaceModel place) {
+    final keywords = _extractKeywords(query);
+    if (keywords.isEmpty) return true;
+    final haystack = _extractKeywords(
+      '${place.nom} ${place.quartier ?? ''} ${place.ville} ${place.adresse ?? ''} ${place.categorie?.nom ?? ''}',
+    ).join(' ');
+    return keywords.any((k) => haystack.contains(k));
+  }
+
   void _processSpokenText(String text) async {
     final query = text.toLowerCase().trim();
     if (query.isEmpty) return;
@@ -424,8 +459,23 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
         limit: 5,
       );
 
-      if (searchRes.places.isNotEmpty) {
-        _selectPlace(place: searchRes.places.first);
+      final relevantPlaces = searchRes.places
+          .where((p) => _placeMatchesKeywords(text, p))
+          .toList();
+
+      if (relevantPlaces.isNotEmpty) {
+        final top = relevantPlaces.first;
+        final topScore = top.searchScore ?? 1.0;
+        if (relevantPlaces.length == 1 || topScore >= 0.65) {
+          _selectPlace(place: top);
+          return;
+        }
+        if (mounted) {
+          setState(() {
+            _matchedPlaces = relevantPlaces;
+            _statusMessage = 'Choisissez le lieu correspondant à « $text » :';
+          });
+        }
         return;
       }
     } catch (_) {}
@@ -445,10 +495,14 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
       }
     }
 
-    // 3. Si non trouvé : définir la requête et renvoyer vers la recherche textuelle
+    // 3. Aucun lieu pertinent trouvé : pré-remplir la requête sans sélectionner une fausse destination
     ref.read(searchQueryProvider.notifier).setQuery(text);
     if (mounted) {
-      Navigator.of(context).pop();
+      setState(() {
+        _matchedPlaces = const [];
+        _statusMessage =
+            'Aucun lieu exact trouvé pour « $text ». Réessayez ou choisissez un lieu :';
+      });
     }
   }
 
@@ -631,6 +685,89 @@ class _VoiceSearchSheetState extends ConsumerState<VoiceSearchSheet>
                   ),
                 ),
               ),
+              // Résultats vocaux détectés si plusieurs choix ou score modéré
+              if (_matchedPlaces.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Résultats trouvés (${_matchedPlaces.length}) :',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey[800],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                ..._matchedPlaces.take(3).map(
+                      (place) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: InkWell(
+                          onTap: () => _selectPlace(place: place),
+                          borderRadius: BorderRadius.circular(14),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryLight,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: AppColors.primary.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.location_on_rounded,
+                                  color: AppColors.primary,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        place.nom,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF0F172A),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      Text(
+                                        place.subtitle,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF475569),
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                if (place.formattedDistance != null)
+                                  Text(
+                                    place.formattedDistance!,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+              ],
               const SizedBox(height: 24),
 
               // Suggestions de destinations rapides au Faso

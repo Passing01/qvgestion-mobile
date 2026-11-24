@@ -25,6 +25,7 @@ class PlaceModel extends Equatable {
   final DateTime? updatedAt;
   final bool isFavorite;
   final double? distanceMeters;
+  final double? searchScore;
 
   // Attributs avancés FASO NAV (Ancres, Confiance, Tags, Importance)
   final int importance; // 1 à 5
@@ -68,6 +69,7 @@ class PlaceModel extends Equatable {
     this.updatedAt,
     this.isFavorite = false,
     this.distanceMeters,
+    this.searchScore,
     this.importance = 3,
     this.isAnchor = false,
     this.confidence = 2,
@@ -170,6 +172,7 @@ class PlaceModel extends Equatable {
       distanceMeters: json['distance_meters'] != null
           ? (json['distance_meters'] as num).toDouble()
           : null,
+      searchScore: (json['score'] as num?)?.toDouble(),
       importance: (json['importance'] as num?)?.toInt() ?? 3,
       isAnchor: (json['is_anchor'] as bool?) ?? false,
       confidence: (json['confidence'] as num?)?.toInt() ?? 2,
