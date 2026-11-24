@@ -1899,6 +1899,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       });
     });
 
+    // Mise à jour des noms de quartiers du Burkina Faso sur la carte
+    ref.listen<AsyncValue<Map<String, dynamic>>>(neighborhoodsGeoJsonProvider, (
+      _,
+      next,
+    ) {
+      next.whenData((geoJson) {
+        mapService.setNeighborhoodsGeoJson(geoJson);
+      });
+    });
+
     // Bascule fluide entre Navigation entre bâtiments 3D, Radar (sur route entre bâtiments) et Carte classique
     ref.listen<NavigationViewMode>(navigationViewModeProvider, (
       prev,
@@ -2080,6 +2090,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     ref.read(activeReportsProvider).value ??
                     const <ReportModel>[];
                 await mapService.setReports(initialReports);
+                final neighborhoods =
+                    ref.read(neighborhoodsGeoJsonProvider).value ??
+                    await ref
+                        .read(neighborhoodsGeoJsonProvider.future)
+                        .catchError(
+                          (_) => const {'type': 'FeatureCollection', 'features': []},
+                        );
+                await mapService.setNeighborhoodsGeoJson(neighborhoods);
                 await _refreshPlaces();
               },
               onTap: (point, latLng) async {
@@ -3912,7 +3930,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               SizedBox(width: 8),
               Flexible(
                 child: Text(
-                  'Explorer Ouaga & Environs',
+                  'Explorer le Burkina & Environs',
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14,

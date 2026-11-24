@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'package:dio/dio.dart';
 import 'package:qvgestion_mobile/core/network/api_client.dart';
 import 'package:qvgestion_mobile/core/network/api_endpoints.dart';
 import 'package:qvgestion_mobile/core/utils/app_logger.dart';
@@ -423,6 +425,89 @@ class AdminRepository {
       await apiClient.delete<dynamic>(ApiEndpoints.adminBuilding3dDelete(id));
     } catch (e, stack) {
       AppLogger.e('Erreur suppression bâtiment 3D #$id', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Liste et recherche tous les lieux pour l'administration (modération, édition, photos)
+  Future<List<PlaceModel>> getAdminPlaces({
+    String? query,
+    String statusFilter = 'all',
+    int limit = 60,
+  }) async {
+    try {
+      final response = await apiClient.get<dynamic>(
+        ApiEndpoints.adminPlaces,
+        queryParameters: {
+          if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+          'status_filter': statusFilter,
+          'limit': limit,
+        },
+      );
+      final list = response.data as List<dynamic>? ?? [];
+      return list
+          .map((item) => PlaceModel.fromJson(Map<String, dynamic>.from(item as Map)))
+          .toList();
+    } catch (e, stack) {
+      AppLogger.e('Erreur récupération catalogue lieux admin', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Met à jour les informations d'un lieu (nom, quartier, ville, photos, statut, repère...)
+  Future<PlaceModel> updatePlace(int placeId, Map<String, dynamic> data) async {
+    try {
+      final response = await apiClient.put<dynamic>(
+        ApiEndpoints.placeDetail(placeId),
+        data: data,
+      );
+      return PlaceModel.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } catch (e, stack) {
+      AppLogger.e('Erreur mise à jour lieu #$placeId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Téléverse une image pour un lieu (POST /admin/places/{id}/photos)
+  Future<PlaceModel> uploadPlacePhoto({
+    required int placeId,
+    required Uint8List bytes,
+    required String filename,
+  }) async {
+    try {
+      final formData = FormData.fromMap({
+        'file': MultipartFile.fromBytes(bytes, filename: filename),
+      });
+      final response = await apiClient.post<dynamic>(
+        ApiEndpoints.adminPlacePhotos(placeId),
+        data: formData,
+      );
+      return PlaceModel.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } catch (e, stack) {
+      AppLogger.e('Erreur upload photo lieu #$placeId', e, stack);
+      rethrow;
+    }
+  }
+
+  /// Retire une photo d'un lieu
+  Future<PlaceModel> deletePlacePhoto({
+    required int placeId,
+    required String photoUrl,
+  }) async {
+    try {
+      final response = await apiClient.delete<dynamic>(
+        ApiEndpoints.adminPlacePhotos(placeId),
+        queryParameters: {'photo_url': photoUrl},
+      );
+      return PlaceModel.fromJson(
+        Map<String, dynamic>.from(response.data as Map),
+      );
+    } catch (e, stack) {
+      AppLogger.e('Erreur suppression photo lieu #$placeId', e, stack);
       rethrow;
     }
   }

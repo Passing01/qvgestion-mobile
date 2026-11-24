@@ -56,6 +56,8 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
   late final TextEditingController _nameController;
   late final TextEditingController _descController;
   late final TextEditingController _addressController;
+  late final TextEditingController _villeController;
+  late final TextEditingController _quartierController;
   String _selectedCategory = 'commerce';
   bool _isLoading = false;
 
@@ -74,6 +76,8 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
     _nameController = TextEditingController(text: widget.initialName ?? '');
     _descController = TextEditingController();
     _addressController = TextEditingController();
+    _villeController = TextEditingController();
+    _quartierController = TextEditingController();
     if (widget.initialCategory != null) {
       _selectedCategory = widget.initialCategory!;
     }
@@ -84,6 +88,8 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
     _nameController.dispose();
     _descController.dispose();
     _addressController.dispose();
+    _villeController.dispose();
+    _quartierController.dispose();
     super.dispose();
   }
 
@@ -98,6 +104,10 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
     );
 
     try {
+      final villeVal = _villeController.text.trim().isEmpty
+          ? 'Burkina Faso'
+          : _villeController.text.trim();
+      final quartierVal = _quartierController.text.trim();
       final payload = {
         'nom': _nameController.text.trim(),
         'description': _descController.text.trim().isEmpty ? null : _descController.text.trim(),
@@ -105,17 +115,22 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
         'latitude': widget.latitude,
         'longitude': widget.longitude,
         'categorie_id': selectedCatObj['id'],
-        'ville': 'Ouagadougou',
+        'ville': villeVal,
+        if (quartierVal.isNotEmpty) 'quartier': quartierVal,
         'is_anchor': false,
       };
 
       final createdPlace = await repo.createPlace(payload);
-      AppLogger.i('Lieu créé avec succès: ${createdPlace.nom}');
+      AppLogger.i('Lieu créé avec succès: ${createdPlace.nom} (valide=${createdPlace.estValide})');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Lieu "${createdPlace.nom}" enregistré avec succès !'),
+            content: Text(
+              createdPlace.estValide
+                  ? 'Lieu "${createdPlace.nom}" publié sur la carte !'
+                  : 'Lieu "${createdPlace.nom}" soumis pour validation par l\'équipe Admin.',
+            ),
             backgroundColor: const Color(0xFF0F766E),
           ),
         );
@@ -306,7 +321,41 @@ class _SavePlaceModalState extends ConsumerState<SavePlaceModal> {
               ),
               const SizedBox(height: 12),
 
-              // Champ Description / Quartier
+              // Champs Ville & Quartier (partout au Burkina Faso)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _villeController,
+                      decoration: InputDecoration(
+                        labelText: 'Ville / Commune',
+                        hintText: 'Ouaga, Bobo, Koudougou...',
+                        prefixIcon: const Icon(Icons.location_city_rounded, size: 18),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _quartierController,
+                      decoration: InputDecoration(
+                        labelText: 'Quartier / Secteur',
+                        hintText: 'Ex: Secteur 4, Patte d\'Oie',
+                        prefixIcon: const Icon(Icons.signpost_rounded, size: 18),
+                        filled: true,
+                        fillColor: const Color(0xFFF8FAFC),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // Champ Description / Repère
               TextFormField(
                 controller: _descController,
                 decoration: InputDecoration(

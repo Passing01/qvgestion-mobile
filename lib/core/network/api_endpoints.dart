@@ -13,6 +13,7 @@ class ApiEndpoints {
   static const String places = '/places/';
   static const String placesNearby = '/places/nearby';
   static const String placesSearch = '/places/search';
+  static const String placesNeighborhoods = '/places/neighborhoods';
   static const String search = '/search';
   static const String searchAliases = '/search/aliases';
   static String placeDetail(dynamic placeId) => '/places/$placeId';
@@ -73,6 +74,8 @@ class ApiEndpoints {
   // --- Back-Office & Administration (GrabMaps & API B2B) ---
   static const String adminDashboard = '/admin/dashboard';
   static const String adminPendingPlaces = '/admin/pending-places';
+  static const String adminPlaces = '/admin/places';
+  static String adminPlacePhotos(int placeId) => '/admin/places/$placeId/photos';
   static String adminModeratePlace(int placeId) => '/admin/places/$placeId/moderate';
   static const String adminRoadFeatures = '/guidance/road-features';
   static const String adminApiKeys = '/admin/api-keys';

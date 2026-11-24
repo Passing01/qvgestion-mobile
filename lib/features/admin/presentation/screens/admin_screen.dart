@@ -13,6 +13,7 @@ import 'package:qvgestion_mobile/features/admin/presentation/widgets/broadcast_g
 import 'package:qvgestion_mobile/features/admin/presentation/widgets/create_api_key_dialog.dart';
 import 'package:qvgestion_mobile/features/admin/presentation/widgets/declare_maintenance_dialog.dart';
 import 'package:qvgestion_mobile/features/admin/presentation/widgets/add_building_3d_dialog.dart';
+import 'package:qvgestion_mobile/features/admin/presentation/widgets/admin_edit_place_dialog.dart';
 import 'package:qvgestion_mobile/features/admin/presentation/widgets/trace_road_dialog.dart';
 import 'package:qvgestion_mobile/features/auth/data/models/user_model.dart';
 import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
@@ -29,6 +30,7 @@ class AdminScreen extends ConsumerStatefulWidget {
 class _AdminScreenState extends ConsumerState<AdminScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  final TextEditingController _placesSearchCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -38,6 +40,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
 
   @override
   void dispose() {
+    _placesSearchCtrl.dispose();
     _tabController.dispose();
     super.dispose();
   }
@@ -45,6 +48,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
   void _refreshAll() {
     ref.invalidate(adminDashboardStatsProvider);
     ref.invalidate(pendingPlacesProvider);
+    ref.invalidate(adminPlacesProvider);
     ref.invalidate(activeReportsProvider);
     ref.invalidate(categoriesProvider);
     ref.invalidate(adminRoadFeaturesProvider);
@@ -287,12 +291,14 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
   // ====================================================
   Widget _buildModerationTab() {
     final pendingPlacesAsync = ref.watch(pendingPlacesProvider);
+    final adminPlacesAsync = ref.watch(adminPlacesProvider);
+    final selectedStatusFilter = ref.watch(adminPlacesStatusFilterProvider);
     final activeReportsAsync = ref.watch(activeReportsProvider);
 
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        // Section POI en attente
+        // Section 1 : Lieux soumis par les usagers en attente de modération
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -302,7 +308,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
             ),
             IconButton(
               icon: const Icon(Icons.refresh, size: 20),
-              onPressed: () => ref.invalidate(pendingPlacesProvider),
+              onPressed: () {
+                ref.invalidate(pendingPlacesProvider);
+                ref.invalidate(adminPlacesProvider);
+              },
             ),
           ],
         ),
@@ -371,18 +380,26 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${place.quartier ?? 'Burkina Faso'} • ${place.adresse ?? ''}',
+                        '${place.ville}${place.quartier != null ? " • ${place.quartier}" : ""} • ${place.adresse ?? ""}',
                         style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
                       ),
                       const SizedBox(height: 12),
                       Row(
                         children: [
+                          OutlinedButton.icon(
+                            onPressed: () =>
+                                AdminEditPlaceDialog.show(context, place),
+                            icon: const Icon(Icons.edit_rounded, size: 16),
+                            label: const Text('Éditer / Photo'),
+                          ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: OutlinedButton(
                               onPressed: () async {
                                 await ref
                                     .read(pendingPlacesProvider.notifier)
                                     .moderate(placeId: place.id, approve: false);
+                                ref.invalidate(adminPlacesProvider);
                                 if (mounted) {
                                   AppSnackbar.showInfo(context, message: 'Lieu rejeté');
                                 }
@@ -394,13 +411,14 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
                               child: const Text('Rejeter'),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: ElevatedButton(
                               onPressed: () async {
                                 await ref
                                     .read(pendingPlacesProvider.notifier)
                                     .moderate(placeId: place.id, approve: true);
+                                ref.invalidate(adminPlacesProvider);
                                 if (mounted) {
                                   AppSnackbar.showSuccess(context,
                                       message: 'Lieu approuvé et publié sur la carte !');
@@ -431,7 +449,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
               const Icon(Icons.cloud_off_rounded, size: 48, color: Color(0xFFEF4444)),
               const SizedBox(height: 12),
               const Text(
-                'Impossible de charger les ancres routières',
+                'Impossible de charger les lieux en attente',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
               const SizedBox(height: 6),
@@ -442,7 +460,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
               ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
-                onPressed: () => ref.invalidate(adminRoadFeaturesProvider),
+                onPressed: () => ref.invalidate(pendingPlacesProvider),
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text('Réessayer'),
                 style: ElevatedButton.styleFrom(
@@ -458,7 +476,201 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
 
         const SizedBox(height: 24),
 
-        // Section Signalements d'incidents
+        // Section 2 : Catalogue complet des lieux (Modifier, Ajouter des images, Modérer)
+        const Text(
+          'Catalogue des Lieux, Édition & Images',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _placesSearchCtrl,
+                decoration: InputDecoration(
+                  isDense: true,
+                  hintText: 'Rechercher un lieu, quartier, ville...',
+                  prefixIcon: const Icon(Icons.search_rounded, size: 20),
+                  suffixIcon: _placesSearchCtrl.text.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 18),
+                          onPressed: () {
+                            _placesSearchCtrl.clear();
+                            ref.read(adminPlacesSearchProvider.notifier).setQuery('');
+                          },
+                        )
+                      : null,
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+                  ),
+                ),
+                onSubmitted: (val) =>
+                    ref.read(adminPlacesSearchProvider.notifier).setQuery(val),
+                onChanged: (val) {
+                  setState(() {});
+                  ref.read(adminPlacesSearchProvider.notifier).setQuery(val);
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: 'Actualiser le catalogue',
+              onPressed: () => ref.invalidate(adminPlacesProvider),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          children: const [
+            ('all', 'Tous'),
+            ('pending', 'En attente'),
+            ('validated', 'Publiés'),
+            ('rejected', 'Rejetés'),
+          ].map((entry) {
+            final isSel = selectedStatusFilter == entry.$1;
+            return ChoiceChip(
+              label: Text(entry.$2),
+              selected: isSel,
+              onSelected: (_) => ref
+                  .read(adminPlacesStatusFilterProvider.notifier)
+                  .setFilter(entry.$1),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 10),
+        adminPlacesAsync.when(
+          data: (allPlaces) {
+            if (allPlaces.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
+                ),
+                child: const Center(
+                  child: Text(
+                    'Aucun lieu trouvé pour ce filtre.',
+                    style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: allPlaces.map((place) {
+                final hasPhoto = place.photos.isNotEmpty;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFE2E8F0)),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: hasPhoto
+                            ? Image.network(
+                                place.photos.first,
+                                width: 54,
+                                height: 54,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, _, _) => _placeholderThumb(),
+                              )
+                            : _placeholderThumb(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              place.nom,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${place.ville}${place.quartier != null ? " • ${place.quartier}" : ""}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Wrap(
+                              spacing: 6,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: place.estValide
+                                        ? const Color(0xFFECFDF5)
+                                        : const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    place.estValide ? 'Publié' : 'En attente',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                      color: place.estValide
+                                          ? const Color(0xFF047857)
+                                          : const Color(0xFFB45309),
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  '🖼️ ${place.photos.length} photo(s)',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF475569),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: () =>
+                            AdminEditPlaceDialog.show(context, place),
+                        icon: const Icon(Icons.edit_rounded, size: 16),
+                        label: const Text('Modifier / Image'),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text(
+            'Erreur chargement catalogue: $e',
+            style: const TextStyle(fontSize: 12, color: Colors.red),
+          ),
+        ),
+
+        const SizedBox(height: 24),
+
+        // Section 3 : Signalements d'incidents
         const Text(
           'Signalements Collaboratifs en Cours',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
@@ -1827,6 +2039,22 @@ class _AdminScreenState extends ConsumerState<AdminScreen>
             style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _placeholderThumb() {
+    return Container(
+      width: 54,
+      height: 54,
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Icon(
+        Icons.image_outlined,
+        color: Color(0xFF94A3B8),
+        size: 24,
       ),
     );
   }

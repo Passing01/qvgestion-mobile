@@ -64,6 +64,7 @@ abstract class MapService {
   Future<void> setTransportMode(String? mode);
   Future<void> setSelectedPlace(PlaceModel? place);
   Future<void> setMonuments3dGeoJson(Map<String, dynamic> geojson);
+  Future<void> setNeighborhoodsGeoJson(Map<String, dynamic> geojson) async {}
   Future<void> setRoadFeatures(List<RoadFeatureModel> features) async {}
   Future<void> setReports(List<ReportModel> reports) async {}
   Future<void> setCameraTilt(double tilt);
@@ -112,12 +113,19 @@ class MapLibreMapService implements MapService {
   static const String roadFeaturesCircleLayerId = 'fasonav-road-features-circle';
   static const String roadFeaturesLabelLayerId = 'fasonav-road-features-label';
 
+  static const String neighborhoodsSourceId = 'fasonav-neighborhoods-source';
+  static const String neighborhoodsLabelLayerId = 'fasonav-neighborhoods-label';
+
   static const String reportsOverlaySourceId = 'fasonav-reports-source';
   static const String reportsOverlayCircleLayerId = 'fasonav-reports-circle';
   static const String reportsOverlayLabelLayerId = 'fasonav-reports-label';
 
   List<RoadFeatureModel> _cachedRoadFeatures = const [];
   List<ReportModel> _cachedReports = const [];
+  Map<String, dynamic> _cachedNeighborhoodsGeoJson = const {
+    'type': 'FeatureCollection',
+    'features': [],
+  };
 
   static const String userLocationSourceId = 'fasonav-user-location-source';
   static const String userLocationAuraLayerId = 'fasonav-user-location-aura';
@@ -255,6 +263,8 @@ class MapLibreMapService implements MapService {
     String? belowLayerId,
     bool enableInteraction = false,
     dynamic filter,
+    double? minzoom,
+    double? maxzoom,
   }) async {
     if (!existingLayers.contains(layerId)) {
       try {
@@ -265,6 +275,8 @@ class MapLibreMapService implements MapService {
           belowLayerId: belowLayerId,
           enableInteraction: enableInteraction,
           filter: filter,
+          minzoom: minzoom,
+          maxzoom: maxzoom,
         );
         existingLayers.add(layerId);
       } catch (e) {
@@ -359,11 +371,11 @@ class MapLibreMapService implements MapService {
         placesSourceId,
         placesData,
         cluster: true,
-        clusterRadius: 46.0,
-        clusterMaxZoom: 14.0,
+        clusterRadius: 34.0,
+        clusterMaxZoom: 12.2,
       );
 
-      // Couche des grappes (cercles bleu foncé avec contour blanc et rayon adaptatif)
+      // Couche des grappes (cercles bleu foncé avec nombre de lieux regroupés)
       await _safeAddCircleLayer(
         c,
         existingLayers,
@@ -372,31 +384,37 @@ class MapLibreMapService implements MapService {
         const CircleLayerProperties(
           circleColor: '#1E3A5F',
           circleStrokeColor: '#FFFFFF',
-          circleStrokeWidth: 3.0,
+          circleStrokeWidth: 2.5,
           circleRadius: [
             Expressions.step,
             [Expressions.get, 'point_count'],
-            18.0,
+            22.0,
             10,
-            24.0,
+            27.0,
             50,
-            32.0,
+            33.0,
           ],
         ),
         filter: [Expressions.has, 'point_count'],
         enableInteraction: false,
       );
 
-      // Couche du libellé chiffré au centre de la grappe
+      // Couche du libellé explicite au centre de la grappe (ex: "17\nlieux")
       await _safeAddSymbolLayer(
         c,
         existingLayers,
         placesSourceId,
         placesClusterCountLayerId,
         const SymbolLayerProperties(
-          textField: [Expressions.get, 'point_count_abbreviated'],
+          textField: [
+            Expressions.concat,
+            [
+              [Expressions.get, 'point_count_abbreviated'],
+              '\nlieux',
+            ],
+          ],
           textColor: '#FFFFFF',
-          textSize: 14.0,
+          textSize: 10.5,
           textAllowOverlap: true,
         ),
         filter: [Expressions.has, 'point_count'],
@@ -809,6 +827,37 @@ class MapLibreMapService implements MapService {
         enableInteraction: false,
       );
 
+      // 2.6b Noms des quartiers et arrondissements du Burkina Faso
+      await _safeAddGeoJsonSource(
+        c,
+        existingSources,
+        neighborhoodsSourceId,
+        _cachedNeighborhoodsGeoJson,
+      );
+      await _safeAddSymbolLayer(
+        c,
+        existingLayers,
+        neighborhoodsSourceId,
+        neighborhoodsLabelLayerId,
+        SymbolLayerProperties(
+          textField: [Expressions.get, 'quartier'],
+          textFont: const ['Noto Sans Bold'],
+          textSize: 12.0,
+          textLetterSpacing: 0.08,
+          textTransform: 'uppercase',
+          textColor: theme.label,
+          textOpacity: 0.78,
+          textHaloColor: theme.halo,
+          textHaloWidth: 2.2,
+          textMaxWidth: 10.0,
+          textAllowOverlap: false,
+          textOptional: true,
+        ),
+        minzoom: 10.5,
+        maxzoom: 16.8,
+        enableInteraction: false,
+      );
+
       // 3. Initialisation de la source et couches du lieu sélectionné (repère de destination / pin)
       final selectedGeoJson = _buildPointGeoJson(
         _selectedPlace?.latitude,
@@ -1162,6 +1211,18 @@ class MapLibreMapService implements MapService {
       );
     } catch (e) {
       AppLogger.d('Mise à jour source signalements MapLibre: $e');
+    }
+  }
+
+  @override
+  Future<void> setNeighborhoodsGeoJson(Map<String, dynamic> geojson) async {
+    _cachedNeighborhoodsGeoJson = geojson;
+    final c = _controller;
+    if (c == null || !_layersConfigured) return;
+    try {
+      await c.setGeoJsonSource(neighborhoodsSourceId, geojson);
+    } catch (e) {
+      AppLogger.d('Mise à jour source quartiers MapLibre: $e');
     }
   }
 

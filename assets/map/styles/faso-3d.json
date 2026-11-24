@@ -2717,7 +2717,7 @@
       "type": "symbol",
       "source": "openmaptiles",
       "source-layer": "place",
-      "minzoom": 11.0,
+      "minzoom": 10.5,
       "filter": [
         "match",
         [
@@ -2760,10 +2760,10 @@
           [
             "zoom"
           ],
-          8,
-          9,
-          12,
-          10
+          10,
+          11,
+          14,
+          13.5
         ],
         "text-transform": "uppercase"
       },

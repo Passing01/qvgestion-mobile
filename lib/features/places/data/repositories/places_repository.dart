@@ -761,4 +761,21 @@ class PlacesRepository {
       rethrow;
     }
   }
+
+  /// Centroïdes des quartiers et arrondissements du Burkina Faso (GeoJSON)
+  Future<Map<String, dynamic>> getNeighborhoodsGeoJson({String? bbox}) async {
+    try {
+      final response = await apiClient.get<dynamic>(
+        ApiEndpoints.placesNeighborhoods,
+        queryParameters: bbox != null ? {'bbox': bbox} : null,
+      );
+      final data = response.data;
+      if (data is Map && data['type'] == 'FeatureCollection') {
+        return Map<String, dynamic>.from(data);
+      }
+    } catch (e) {
+      AppLogger.d('Chargement des noms de quartiers ignoré: $e');
+    }
+    return const {'type': 'FeatureCollection', 'features': []};
+  }
 }

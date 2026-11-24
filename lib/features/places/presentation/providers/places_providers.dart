@@ -1743,3 +1743,9 @@ final placeDetailProvider = FutureProvider.family<PlaceModel, String>((ref, plac
   final repository = ref.watch(placesRepositoryProvider);
   return repository.getPlaceDetail(placeId);
 });
+
+/// Centroïdes des quartiers du Burkina Faso à afficher directement sur la carte
+final neighborhoodsGeoJsonProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final repository = ref.watch(placesRepositoryProvider);
+  return repository.getNeighborhoodsGeoJson();
+});

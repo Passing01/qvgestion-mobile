@@ -160,3 +160,37 @@ final adminBuildings3dProvider = FutureProvider<List<Building3dModel>>((ref) asy
   return repo.getBuildings3d();
 });
 
+/// Requête de recherche de lieux dans la console Admin
+class AdminPlacesSearchNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+
+  void setQuery(String q) => state = q;
+}
+
+final adminPlacesSearchProvider =
+    NotifierProvider<AdminPlacesSearchNotifier, String>(
+  AdminPlacesSearchNotifier.new,
+);
+
+/// Filtre de statut de lieux dans la console Admin ('all', 'pending', 'validated', 'rejected')
+class AdminPlacesStatusFilterNotifier extends Notifier<String> {
+  @override
+  String build() => 'all';
+
+  void setFilter(String f) => state = f;
+}
+
+final adminPlacesStatusFilterProvider =
+    NotifierProvider<AdminPlacesStatusFilterNotifier, String>(
+  AdminPlacesStatusFilterNotifier.new,
+);
+
+/// Liste filtrée de tous les lieux pour édition / ajout d'images / modération
+final adminPlacesProvider = FutureProvider<List<PlaceModel>>((ref) async {
+  final repo = ref.watch(adminRepositoryProvider);
+  final query = ref.watch(adminPlacesSearchProvider);
+  final status = ref.watch(adminPlacesStatusFilterProvider);
+  return repo.getAdminPlaces(query: query, statusFilter: status);
+});
+

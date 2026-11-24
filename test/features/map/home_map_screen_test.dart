@@ -144,8 +144,8 @@ void main() {
     // 5. Badge Hors-ligne prêt sur la carte
     expect(find.text('Hors-ligne prêt'), findsOneWidget);
 
-    // 6. Tiroir "Explorer Ouaga & Environs"
-    expect(find.text('Explorer Ouaga & Environs'), findsOneWidget);
+    // 6. Tiroir "Explorer le Burkina & Environs"
+    expect(find.text('Explorer le Burkina & Environs'), findsOneWidget);
     expect(find.text('Populaire'), findsWidgets);
     expect(find.text('Tout voir'), findsOneWidget);
     expect(find.text('Héros Nationaux'), findsOneWidget);

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qvgestion_mobile/features/places/data/models/place_model.dart';
+import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
 
 class IconicPlaceItem {
   final String title;
@@ -13,6 +15,7 @@ class IconicPlaceItem {
   final String gradientStart;
   final String gradientEnd;
   final IconData icon;
+  final String? imageUrl;
 
   const IconicPlaceItem({
     required this.title,
@@ -26,10 +29,11 @@ class IconicPlaceItem {
     required this.gradientStart,
     required this.gradientEnd,
     required this.icon,
+    this.imageUrl,
   });
 }
 
-/// Tiroir inférieur "Explorer Ouaga & Environs" conforme à la maquette officielle
+/// Tiroir inférieur "Explorer le Burkina & Environs"
 class ExploreOuagaDrawer extends ConsumerWidget {
   final ValueChanged<IconicPlaceItem> onPlaceTap;
   final VoidCallback? onCollapse;
@@ -43,10 +47,9 @@ class ExploreOuagaDrawer extends ConsumerWidget {
   static const List<IconicPlaceItem> iconicPlaces = [
     IconicPlaceItem(
       title: 'Héros Nationaux',
-      subtitle: 'Ouaga 2000 • Symbole historique',
+      subtitle: 'Ouagadougou • Ouaga 2000',
       badgeText: 'Incontournable',
       badgeColor: Color(0xFF2563EB),
-      distance: '2.4 km',
       rating: 4.8,
       latitude: 12.312187,
       longitude: -1.502617,
@@ -55,11 +58,34 @@ class ExploreOuagaDrawer extends ConsumerWidget {
       icon: Icons.account_balance_rounded,
     ),
     IconicPlaceItem(
+      title: 'Grande Mosquée de Dioulassoba',
+      subtitle: 'Bobo-Dioulasso • Patrimoine',
+      badgeText: 'Patrimoine',
+      badgeColor: Color(0xFF047857),
+      rating: 4.9,
+      latitude: 11.1772,
+      longitude: -4.2979,
+      gradientStart: '#065F46',
+      gradientEnd: '#10B981',
+      icon: Icons.mosque_rounded,
+    ),
+    IconicPlaceItem(
+      title: 'Cascades de Karfiguéla',
+      subtitle: 'Banfora • Site naturel',
+      badgeText: 'Nature',
+      badgeColor: Color(0xFF0284C7),
+      rating: 4.9,
+      latitude: 10.7222,
+      longitude: -4.8256,
+      gradientStart: '#0369A1',
+      gradientEnd: '#38BDF8',
+      icon: Icons.water_rounded,
+    ),
+    IconicPlaceItem(
       title: 'Place de la Révolution',
-      subtitle: 'Centre-Ville • Cœur historique',
+      subtitle: 'Ouagadougou • Centre-Ville',
       badgeText: 'Historique',
       badgeColor: Color(0xFFC2410C),
-      distance: '1.1 km',
       rating: 4.7,
       latitude: 12.369752,
       longitude: -1.529488,
@@ -69,10 +95,9 @@ class ExploreOuagaDrawer extends ConsumerWidget {
     ),
     IconicPlaceItem(
       title: 'Grand Marché Rood-Woko',
-      subtitle: 'Centre-Ville • Grand pôle commercial',
+      subtitle: 'Ouagadougou • Pôle commercial',
       badgeText: 'Populaire',
       badgeColor: Color(0xFF0D9488),
-      distance: '850 m',
       rating: 4.6,
       latitude: 12.3685,
       longitude: -1.5222,
@@ -82,8 +107,40 @@ class ExploreOuagaDrawer extends ConsumerWidget {
     ),
   ];
 
+  List<IconicPlaceItem> _buildDrawerPlaces(List<PlaceModel> nearbyPlaces) {
+    final dynamicItems = <IconicPlaceItem>[];
+    final withPhotos = nearbyPlaces.where((p) => p.photos.isNotEmpty).take(4);
+    for (final p in withPhotos) {
+      final distText = p.distanceMeters != null
+          ? (p.distanceMeters! >= 1000
+              ? '${(p.distanceMeters! / 1000).toStringAsFixed(1)} km'
+              : '${p.distanceMeters!.round()} m')
+          : null;
+      dynamicItems.add(
+        IconicPlaceItem(
+          title: p.nom,
+          subtitle: '${p.ville}${p.quartier != null ? " • ${p.quartier}" : ""}',
+          badgeText: p.categorie?.nom ?? 'À découvrir',
+          badgeColor: const Color(0xFF0F766E),
+          distance: distText,
+          rating: p.noteMoyenne ?? 4.7,
+          latitude: p.latitude,
+          longitude: p.longitude,
+          gradientStart: '#0F766E',
+          gradientEnd: '#14B8A6',
+          icon: Icons.place_rounded,
+          imageUrl: p.photos.first,
+        ),
+      );
+    }
+    return [...dynamicItems, ...iconicPlaces];
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final nearbyPlaces = ref.watch(placesStateProvider).placesList;
+    final items = _buildDrawerPlaces(nearbyPlaces);
+    const headerTitle = 'Explorer le Burkina & Environs';
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
       onVerticalDragUpdate: (details) {
@@ -142,18 +199,22 @@ class ExploreOuagaDrawer extends ConsumerWidget {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
+                      children: [
                         Text(
-                          'Explorer Ouaga & Environs',
-                          style: TextStyle(
-                            fontSize: 18,
+                          headerTitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 17,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF111827),
                           ),
                         ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Patrimoine, verdure et culture burkinabè',
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Villes, quartiers et patrimoine du Burkina Faso',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
                             color: Color(0xFF6B7280),
@@ -212,10 +273,10 @@ class ExploreOuagaDrawer extends ConsumerWidget {
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               scrollDirection: Axis.horizontal,
-              itemCount: iconicPlaces.length,
+              itemCount: items.length,
               separatorBuilder: (context, index) => const SizedBox(width: 14),
               itemBuilder: (context, index) {
-                final place = iconicPlaces[index];
+                final place = items[index];
                 return GestureDetector(
                   onTap: () {
                     onPlaceTap(place);
@@ -255,13 +316,32 @@ class ExploreOuagaDrawer extends ConsumerWidget {
                                   ],
                                 ),
                               ),
-                              child: Center(
-                                child: Icon(
-                                  place.icon,
-                                  size: 48,
-                                  color: Colors.white.withValues(alpha: 0.85),
-                                ),
-                              ),
+                              child: place.imageUrl != null
+                                  ? ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(18),
+                                      ),
+                                      child: Image.network(
+                                        place.imageUrl!,
+                                        height: 115,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, _, _) => Center(
+                                          child: Icon(
+                                            place.icon,
+                                            size: 48,
+                                            color: Colors.white.withValues(alpha: 0.85),
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Icon(
+                                        place.icon,
+                                        size: 48,
+                                        color: Colors.white.withValues(alpha: 0.85),
+                                      ),
+                                    ),
                             ),
                             // Badge Tag (ex: Incontournable, Historique)
                             Positioned(
