@@ -145,5 +145,48 @@ void main() {
         expect(p.accuracy <= 50, isTrue);
       }
     });
+
+    test('isDisplayUsable accepte un point A-GPS/Wi-Fi réaliste (180m) et rejette (0,0) ou >500m', () {
+      final agpsIndoor = Position(
+        latitude: 11.1704,
+        longitude: -4.2852,
+        timestamp: DateTime.now().subtract(const Duration(seconds: 40)),
+        accuracy: 180.0,
+        altitude: 300.0,
+        altitudeAccuracy: 10.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
+      final zeroPoint = Position(
+        latitude: 0.0,
+        longitude: 0.0,
+        timestamp: DateTime.now(),
+        accuracy: 10.0,
+        altitude: 0.0,
+        altitudeAccuracy: 0.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
+      final tooCoarse = Position(
+        latitude: 11.1704,
+        longitude: -4.2852,
+        timestamp: DateTime.now(),
+        accuracy: 1200.0,
+        altitude: 300.0,
+        altitudeAccuracy: 10.0,
+        heading: 0.0,
+        headingAccuracy: 0.0,
+        speed: 0.0,
+        speedAccuracy: 0.0,
+      );
+
+      expect(locationService.isDisplayUsable(agpsIndoor), isTrue);
+      expect(locationService.isDisplayUsable(zeroPoint), isFalse);
+      expect(locationService.isDisplayUsable(tooCoarse), isFalse);
+    });
   });
 }

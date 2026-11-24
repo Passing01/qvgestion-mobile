@@ -289,7 +289,7 @@ class CurrentLocationNotifier extends Notifier<LocationState> {
     });
     final locService = ref.read(locationServiceProvider);
     final lastPos = locService.last;
-    if (lastPos != null && locService.isUsable(lastPos)) {
+    if (lastPos != null && locService.isDisplayUsable(lastPos)) {
       return LocationState(
         lat: lastPos.latitude,
         lon: lastPos.longitude,
@@ -329,24 +329,17 @@ class CurrentLocationNotifier extends Notifier<LocationState> {
       final locService = ref.read(locationServiceProvider);
       final status = await locService.ensurePermission();
       if (status == LocationStatus.ok) {
-        await locService.start();
         _positionStreamSub?.cancel();
         _positionStreamSub = locService.stream.listen((pos) {
-          if (!locService.isUsable(pos)) return;
-          state = LocationState(
-            lat: pos.latitude,
-            lon: pos.longitude,
-            label: 'Position GPS précise',
-          );
+          if (!locService.isDisplayUsable(pos)) return;
+          updateLocation(pos.latitude, pos.longitude, 'Ma position GPS');
         });
+        await locService.start();
 
-        if (locService.last != null && locService.isUsable(locService.last!)) {
+        if (locService.last != null &&
+            locService.isDisplayUsable(locService.last!)) {
           final p = locService.last!;
-          state = LocationState(
-            lat: p.latitude,
-            lon: p.longitude,
-            label: 'Ma position GPS',
-          );
+          updateLocation(p.latitude, p.longitude, 'Ma position GPS');
         }
       }
     } catch (e) {

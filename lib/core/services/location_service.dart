@@ -103,13 +103,19 @@ class LocationService {
     final navigationMode = _navigationMode;
     await _sub?.cancel();
 
-    // Récupération instantanée du dernier fix connu du système
+    // Récupération instantanée du dernier fix connu récent du système (< 30 min)
     try {
       final cached = await Geolocator.getLastKnownPosition();
-      if (cached != null) {
-        last = cached;
-        DebugInfo.instance.updateGpsFix(cached);
-        _ctrl.add(cached);
+      if (cached != null && isDisplayUsable(cached)) {
+        final ageMin = DateTime.now().difference(cached.timestamp).inMinutes.abs();
+        if (ageMin <= 30) {
+          last = cached;
+          final ageSec = DateTime.now().difference(cached.timestamp).inSeconds.abs();
+          if (ageSec <= 15) {
+            DebugInfo.instance.updateGpsFix(cached);
+          }
+          _ctrl.add(cached);
+        }
       }
     } catch (_) {}
 
@@ -128,10 +134,11 @@ class LocationService {
           ),
         );
       } else {
+        // En exploration, LocationAccuracy.high exploite GNSS + Wi-Fi/4G sans bloquer en intérieur
         locationSettings = AndroidSettings(
-          accuracy: LocationAccuracy.bestForNavigation,
+          accuracy: LocationAccuracy.high,
           distanceFilter: 0,
-          intervalDuration: const Duration(seconds: 1),
+          intervalDuration: const Duration(seconds: 2),
         );
       }
     } else if (kIsWeb) {
@@ -141,37 +148,25 @@ class LocationService {
       );
     } else {
       locationSettings = LocationSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
+        accuracy: navigationMode
+            ? LocationAccuracy.bestForNavigation
+            : LocationAccuracy.high,
         distanceFilter: navigationMode ? 3 : 0,
       );
     }
 
     _sub = Geolocator.getPositionStream(locationSettings: locationSettings).listen(
       (p) {
-        last = p;
-        // Journalisation obligatoire conforme Étape 6 :
-        // [GPS] latitude, longitude ± précision m, vitesse m/s
-        final logMsg =
-            '[GPS] ${p.latitude.toStringAsFixed(6)}, ${p.longitude.toStringAsFixed(6)} ±${p.accuracy.toStringAsFixed(0)} m, ${p.speed.toStringAsFixed(1)} m/s';
-        AppLogger.i(logMsg);
-        debugPrint(logMsg);
-
-        // Alimentation de la télémétrie de débogage
-        DebugInfo.instance.updateGpsFix(p);
-
-        // Rétablissement immédiat du signal
-        if (gpsLost.value) {
-          gpsLost.value = false;
-          AppLogger.i('📡 [GPS] Signal GPS retrouvé');
-        }
-
-        // Diffusion aux écouteurs de l'app
-        _ctrl.add(p);
+        if (!_shouldAcceptPosition(p)) return;
+        _emitFreshFix(p);
       },
       onError: (e) {
         AppLogger.e('⛔ [GPS] Erreur flux GPS: $e');
       },
     );
+
+    // Force immédiatement un premier fix actif si le flux stream tarde au démarrage
+    unawaited(refreshCurrentPosition());
 
     // Watchdog : vérifie périodiquement si le signal GPS est réellement perdu.
     // Sur Web (kIsWeb), watchPosition n'émet pas à fréquence fixe à l'arrêt :
@@ -196,6 +191,34 @@ class LocationService {
     });
   }
 
+  void _emitFreshFix(Position p) {
+    last = p;
+    final logMsg =
+        '[GPS] ${p.latitude.toStringAsFixed(6)}, ${p.longitude.toStringAsFixed(6)} ±${p.accuracy.toStringAsFixed(0)} m, ${p.speed.toStringAsFixed(1)} m/s';
+    AppLogger.i(logMsg);
+    debugPrint(logMsg);
+    DebugInfo.instance.updateGpsFix(p);
+    if (gpsLost.value) {
+      gpsLost.value = false;
+      AppLogger.i('📡 [GPS] Signal GPS retrouvé');
+    }
+    _ctrl.add(p);
+  }
+
+  bool _shouldAcceptPosition(Position p) {
+    if (!isDisplayUsable(p)) return false;
+    final prev = last;
+    final fixAt = DebugInfo.instance.lastFixAt;
+    if (prev != null && fixAt != null) {
+      final age = DateTime.now().difference(fixAt).inSeconds.abs();
+      // Évite qu'un rebond réseau très imprécis (>150 m) écrase un fix GNSS récent (<=25 m)
+      if (age <= 15 && prev.accuracy <= 25.0 && p.accuracy > 150.0) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   /// Écarte les mauvais points pour la navigation :
   /// sur mobile : précision <= 50 m et âge <= 10 s ; sur Web : tolérance Wi-Fi/navigateur.
   bool isUsable(Position p) {
@@ -205,26 +228,49 @@ class LocationService {
     return p.accuracy <= maxAcc && age <= maxAge;
   }
 
+  /// Tolérance adaptée à l'affichage temps réel sur la carte (exploration, recherche, météo) :
+  /// accepte les fixes GNSS / Wi-Fi / 4G valides jusqu'à 500 m pour montrer la vraie position.
+  bool isDisplayUsable(Position p) {
+    if (!p.latitude.isFinite || !p.longitude.isFinite) return false;
+    if (p.latitude == 0.0 && p.longitude == 0.0) return false;
+    final maxAcc = kIsWeb ? 5000.0 : 500.0;
+    return !p.accuracy.isFinite || p.accuracy <= maxAcc;
+  }
+
   /// Tolérance plus souple au démarrage (intérieur, ombre urbaine, navigateur Web)
   bool isStartUsable(Position p) {
     final age = DateTime.now().difference(p.timestamp).inSeconds.abs();
     return p.accuracy <= 150 && age <= 30;
   }
 
-  /// Force une lecture GPS fraîche ponctuelle avant de démarrer le guidage
+  /// Force une lecture GPS fraîche ponctuelle (avec repli réseau/Wi-Fi si le GNSS met du temps)
   Future<Position?> refreshCurrentPosition() async {
     try {
       final p = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 3),
+          timeLimit: Duration(seconds: 6),
         ),
-      ).timeout(const Duration(seconds: 3));
-      last = p;
-      DebugInfo.instance.updateGpsFix(p);
-      _ctrl.add(p);
+      ).timeout(const Duration(seconds: 6));
+      if (_shouldAcceptPosition(p)) {
+        _emitFreshFix(p);
+      }
       return p;
     } catch (_) {
+      if (!kIsWeb) {
+        try {
+          final fallback = await Geolocator.getCurrentPosition(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.medium,
+              timeLimit: Duration(seconds: 5),
+            ),
+          ).timeout(const Duration(seconds: 5));
+          if (_shouldAcceptPosition(fallback)) {
+            _emitFreshFix(fallback);
+          }
+          return fallback;
+        } catch (_) {}
+      }
       return last;
     }
   }

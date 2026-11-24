@@ -260,16 +260,19 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     });
 
     if (status == LocationStatus.ok) {
-      await locationService.start();
       _gpsTrackingSub?.cancel();
       _gpsTrackingSub = locationService.stream.listen((pos) {
-        if (!locationService.isUsable(pos)) return;
+        if (!mounted) return;
         final isActiveNav =
             ref.read(mapScreenStateProvider) ==
                 MapScreenState.activeNavigation &&
             _navEngine != null;
 
         if (isActiveNav) {
+          if (!locationService.isUsable(pos) &&
+              !(_lastNavUpdate == null && locationService.isStartUsable(pos))) {
+            return;
+          }
           final speedKmh = pos.speed.isFinite && pos.speed > 0
               ? pos.speed * 3.6
               : 0.0;
@@ -317,6 +320,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             }
           }
         } else {
+          if (!locationService.isDisplayUsable(pos)) return;
           ref
               .read(mapServiceProvider)
               .updateUserLocation(pos.latitude, pos.longitude);
@@ -326,7 +330,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
         }
       });
 
-      if (locationService.last != null) {
+      await locationService.start();
+      if (!mounted) return;
+
+      if (locationService.last != null &&
+          locationService.isDisplayUsable(locationService.last!)) {
         final p = locationService.last!;
         ref
             .read(mapServiceProvider)
@@ -405,9 +413,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       if (!_permissionOk) return;
     }
 
-    final p = locationService.last;
+    var p = locationService.last;
+    if (p == null || locationService.gpsLost.value || !locationService.isUsable(p)) {
+      if (locationService.gpsLost.value) {
+        await locationService.start();
+      } else {
+        p = await locationService.refreshCurrentPosition() ?? locationService.last;
+      }
+      p ??= locationService.last;
+    }
+    if (!mounted) return;
     if (p == null) {
-      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Position inconnue (recherche du signal GPS...)'),
@@ -416,6 +432,11 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
       return;
     }
+
+    ref.read(mapServiceProvider).updateUserLocation(p.latitude, p.longitude);
+    ref
+        .read(currentLocationProvider.notifier)
+        .updateLocation(p.latitude, p.longitude, 'Ma position GPS');
 
     final isNavBuildings3d =
         ref.read(mapScreenStateProvider) == MapScreenState.activeNavigation &&
@@ -1939,15 +1960,25 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
 
     // Synchronisation position GPS vers MapService (hors navigation active où le map-matching prime)
     ref.listen(currentLocationProvider, (prev, next) {
-      if (ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation) {
+      final isExplore =
+          ref.read(mapScreenStateProvider) != MapScreenState.activeNavigation;
+      if (isExplore) {
         mapService.updateUserLocation(next.lat, next.lon);
       }
-      if (prev == null ||
+      final movedFromDefault =
+          prev == null ||
           (prev.lat == AppConstants.ouagaCenterLatitude &&
               prev.lon == AppConstants.ouagaCenterLongitude &&
               (next.lat != AppConstants.ouagaCenterLatitude ||
-                  next.lon != AppConstants.ouagaCenterLongitude))) {
-        mapService.animateCamera(lat: next.lat, lng: next.lon, zoom: 15.5);
+                  next.lon != AppConstants.ouagaCenterLongitude));
+      final movedFarWhileFollowing =
+          isExplore &&
+          _following &&
+          prev != null &&
+          ((next.lat - prev.lat).abs() > 0.00025 ||
+              (next.lon - prev.lon).abs() > 0.00025);
+      if (movedFromDefault || movedFarWhileFollowing) {
+        mapService.animateCamera(lat: next.lat, lng: next.lon, zoom: 15.8);
         _refreshPlaces();
       }
     });
@@ -2163,6 +2194,18 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 final initLat = lastGps?.latitude ?? loc.lat;
                 final initLon = lastGps?.longitude ?? loc.lon;
                 await mapService.updateUserLocation(initLat, initLon);
+                if (_following &&
+                    screenState != MapScreenState.activeNavigation &&
+                    ((initLat - AppConstants.ouagaCenterLatitude).abs() > 1e-4 ||
+                        (initLon - AppConstants.ouagaCenterLongitude).abs() >
+                            1e-4)) {
+                  await controller.animateCamera(
+                    maplibre.CameraUpdate.newLatLngZoom(
+                      maplibre.LatLng(initLat, initLon),
+                      16.0,
+                    ),
+                  );
+                }
                 final selPlace = ref.read(selectedPlaceProvider);
                 if (selPlace != null) {
                   await mapService.setSelectedPlace(selPlace);
