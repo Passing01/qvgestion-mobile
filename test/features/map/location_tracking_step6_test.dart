@@ -109,18 +109,19 @@ void main() {
       expect(fasoMapFinder, findsOneWidget);
 
       final fasoMap = tester.widget<FasoMap>(fasoMapFinder);
-      expect(fasoMap.myLocationEnabled, isTrue);
-      expect(fasoMap.myLocationTrackingMode, MyLocationTrackingMode.tracking);
+      // Le point natif est désactivé au profit du marqueur unifié FASO NAV (évite les doublons)
+      expect(fasoMap.myLocationEnabled, isFalse);
+      expect(fasoMap.myLocationTrackingMode, MyLocationTrackingMode.none);
     });
 
-    testWidgets('Bandeau « Signal GPS perdu » apparaît en cas d\'interruption du flux', (tester) async {
+    testWidgets('Bandeau rassurant apparaît en cas d\'interruption du flux GPS', (tester) async {
       await tester.pumpWidget(createTestWidget(gpsLost: true));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
       final bannerLost = find.byKey(const Key('banner_gps_lost'));
       expect(bannerLost, findsOneWidget);
-      expect(find.text('Signal GPS perdu'), findsOneWidget);
+      expect(find.text('Recherche de votre position...'), findsOneWidget);
     });
 
     testWidgets('Cas serviceOff : affiche le bandeau service désactivé avec bouton Activer', (tester) async {

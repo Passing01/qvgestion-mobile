@@ -52,10 +52,11 @@ class MapStyleSelectorSheet extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
       child: SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
             Center(
               child: Container(
                 width: 42,
@@ -248,6 +249,7 @@ class MapStyleSelectorSheet extends ConsumerWidget {
               ],
             ),
           ],
+          ),
         ),
       ),
     );

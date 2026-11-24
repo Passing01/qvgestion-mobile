@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qvgestion_mobile/core/services/location_service.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
 import 'package:qvgestion_mobile/core/widgets/feedback/app_snackbar.dart';
 import 'package:qvgestion_mobile/features/navigation/presentation/providers/navigation_providers.dart';
@@ -8,6 +9,8 @@ import 'package:qvgestion_mobile/features/offline/data/models/offline_pack_model
 import 'package:qvgestion_mobile/features/offline/presentation/providers/offline_providers.dart';
 import 'package:qvgestion_mobile/features/offline/presentation/widgets/offline_pois_modal.dart';
 import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
+import 'package:qvgestion_mobile/features/places/presentation/widgets/save_place_modal.dart';
+import 'package:qvgestion_mobile/features/traffic/presentation/widgets/share_trip_sheet.dart';
 
 /// Onglet 3 officiel : Lieux sauvegardés & Cartes hors-ligne (PMTiles)
 /// Entièrement dynamique et connecté à l'API Railway
@@ -24,7 +27,7 @@ class SavedPlacesScreen extends ConsumerWidget {
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         title: const Text(
-          'Sauvegardés & Hors-Ligne',
+          'Mes adresses & Hors-ligne',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
         backgroundColor: Colors.white,
@@ -49,6 +52,62 @@ class SavedPlacesScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // 0. RACCOURCIS GRAND PUBLIC EN 1 CLIC (Maison & Partager ma position)
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final lastGps = ref.read(locationServiceProvider).last;
+                    final loc = ref.read(currentLocationProvider);
+                    SavePlaceModal.show(
+                      context,
+                      latitude: lastGps?.latitude ?? loc.lat,
+                      longitude: lastGps?.longitude ?? loc.lon,
+                      initialName: 'Ma maison',
+                      initialCategory: 'domicile',
+                    );
+                  },
+                  icon: const Icon(Icons.home_rounded, size: 20),
+                  label: const Text('Ma maison'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F766E),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    final lastGps = ref.read(locationServiceProvider).last;
+                    final loc = ref.read(currentLocationProvider);
+                    ShareTripSheet.show(
+                      context,
+                      currentLat: lastGps?.latitude ?? loc.lat,
+                      currentLon: lastGps?.longitude ?? loc.lon,
+                    );
+                  },
+                  icon: const Icon(Icons.share_location_rounded, size: 20),
+                  label: const Text('Ma position'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF0F766E),
+                    side: const BorderSide(color: Color(0xFF0F766E)),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
           // 1. BANNIÈRE D'ÉTAT DU STOCKAGE HORS-LIGNE
           Container(
             padding: const EdgeInsets.all(16),
@@ -109,11 +168,11 @@ class SavedPlacesScreen extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Packs Régionaux Burkina Faso',
+                'Cartes sans internet',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
               ),
               Text(
-                'Format PMTiles',
+                'Sans crédit requis',
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               ),
             ],

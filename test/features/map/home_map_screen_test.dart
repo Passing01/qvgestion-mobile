@@ -130,9 +130,9 @@ void main() {
     expect(find.text('FASO NAV'), findsOneWidget);
     expect(find.text('Explorer'), findsOneWidget);
 
-    // 2. Barre de recherche avec badge FN
-    expect(find.text('Rechercher un lieu, carrefour, maquis...'), findsOneWidget);
-    expect(find.text('FN'), findsOneWidget);
+    // 2. Barre de recherche grand public avec bouton Parler
+    expect(find.text('Où allez-vous ? (marché, pharmacie...)'), findsOneWidget);
+    expect(find.text('Parler'), findsOneWidget);
 
     // 3. Bandeau météo & trafic
     expect(find.textContaining('Ouagadougou 32°C'), findsOneWidget);
@@ -181,50 +181,30 @@ void main() {
     expect(find.byTooltip('Arrêter la navigation'), findsOneWidget);
   });
 
-  testWidgets('Bouton fab_toggle_theme permet de basculer instantanément entre mode clair et mode sombre',
+  testWidgets('Le sélecteur unifié fab_map_style_selector permet de basculer en mode sombre et satellite',
       (WidgetTester tester) async {
     await tester.pumpWidget(createTestWidget());
     await tester.pumpAndSettle();
 
-    // Vérifier la présence du bouton de bascule jour/nuit
-    final toggleBtn = find.byKey(const Key('fab_toggle_theme'));
-    expect(toggleBtn, findsOneWidget);
-
-    // Initialement en mode clair, l'icône est dark_mode_rounded
-    expect(find.byIcon(Icons.dark_mode_rounded), findsOneWidget);
-
-    // Clic pour passer en mode sombre (ou inverser)
-    await tester.tap(toggleBtn);
+    final styleBtn = find.byKey(const Key('fab_map_style_selector'));
+    expect(styleBtn, findsOneWidget);
+    await tester.tap(styleBtn);
     await tester.pumpAndSettle();
 
-    // Après bascule, l'icône devient light_mode_rounded
-    expect(find.byIcon(Icons.light_mode_rounded), findsOneWidget);
-
-    // Clic pour revenir en mode clair
-    await tester.tap(toggleBtn);
+    final darkOpt = find.byKey(const Key('map_style_option_dark'));
+    await tester.ensureVisible(darkOpt);
+    await tester.tap(darkOpt);
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.dark_mode_rounded), findsOneWidget);
-  });
-
-  testWidgets('Bouton fab_toggle_satellite permet de basculer en mode satellite haute résolution',
-      (WidgetTester tester) async {
-    await tester.pumpWidget(createTestWidget());
+    await tester.tap(styleBtn);
     await tester.pumpAndSettle();
 
-    final satBtn = find.byKey(const Key('fab_toggle_satellite'));
-    expect(satBtn, findsOneWidget);
-    expect(find.byIcon(Icons.satellite_alt_rounded), findsOneWidget);
-
-    // Clic pour activer le mode satellite
-    await tester.tap(satBtn, warnIfMissed: false);
+    final satOpt = find.byKey(const Key('map_style_option_satellite'));
+    await tester.ensureVisible(satOpt);
+    await tester.tap(satOpt);
     await tester.pumpAndSettle();
 
-    // Clic pour désactiver le mode satellite
-    await tester.tap(satBtn, warnIfMissed: false);
-    await tester.pumpAndSettle();
-
-    expect(satBtn, findsOneWidget);
+    expect(styleBtn, findsOneWidget);
   });
 
   testWidgets('Desktop Web (>= 900px) contraint le panneau à gauche et place les contrôles à droite',
@@ -237,7 +217,7 @@ void main() {
     await tester.pumpWidget(createTestWidget());
     await tester.pumpAndSettle();
 
-    final searchRect = tester.getRect(find.textContaining('Rechercher un lieu'));
+    final searchRect = tester.getRect(find.textContaining('Où allez-vous'));
     expect(searchRect.width, lessThanOrEqualTo(420.0));
 
     final styleRect = tester.getRect(find.byKey(const Key('fab_map_style_selector')));

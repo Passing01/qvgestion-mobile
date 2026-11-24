@@ -72,6 +72,7 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
   CoordinateModel? _originCoord;
   CoordinateModel? _destCoord;
   String _selectedMode = 'moto';
+  String _activeMultiTarget = 'dest'; // 'origin' | 'dest' | 'waypoint_<index>'
 
   @override
   void initState() {
@@ -130,6 +131,7 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
     setState(() {
       _waypointControllers.add(TextEditingController());
       _waypointCoords.add(null);
+      _activeMultiTarget = 'waypoint_${_waypointControllers.length - 1}';
     });
   }
 
@@ -138,17 +140,110 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
       _waypointControllers[index].dispose();
       _waypointControllers.removeAt(index);
       _waypointCoords.removeAt(index);
+      _activeMultiTarget = 'dest';
     });
+  }
+
+  String _activeMultiTargetLabel() {
+    if (_activeMultiTarget == 'origin') return 'Départ';
+    if (_activeMultiTarget.startsWith('waypoint_')) {
+      final idx = int.tryParse(_activeMultiTarget.split('_').last) ?? 0;
+      return 'Arrêt ${idx + 1}';
+    }
+    return 'Destination finale';
+  }
+
+  void _assignPlaceToActiveField(PlaceModel place) {
+    final coord = CoordinateModel(
+      lat: place.latitude,
+      lon: place.longitude,
+      name: place.nom,
+    );
+    setState(() {
+      if (_activeMultiTarget == 'origin') {
+        _originController.text = place.nom;
+        _originCoord = coord;
+        final emptyWp = _waypointCoords.indexWhere((w) => w == null);
+        _activeMultiTarget = emptyWp != -1 ? 'waypoint_$emptyWp' : 'dest';
+      } else if (_activeMultiTarget.startsWith('waypoint_')) {
+        final idx = int.tryParse(_activeMultiTarget.split('_').last) ?? -1;
+        if (idx >= 0 && idx < _waypointControllers.length) {
+          _waypointControllers[idx].text = place.nom;
+          _waypointCoords[idx] = coord;
+        }
+        final nextEmpty = _waypointCoords.indexWhere((w) => w == null);
+        _activeMultiTarget = nextEmpty != -1 ? 'waypoint_$nextEmpty' : 'dest';
+      } else {
+        _destController.text = place.nom;
+        _destCoord = coord;
+      }
+    });
+  }
+
+  void _addPlaceAsMultiStop(PlaceModel place) {
+    final coord = CoordinateModel(
+      lat: place.latitude,
+      lon: place.longitude,
+      name: place.nom,
+    );
+    setState(() {
+      if (_destCoord == null) {
+        _destController.text = place.nom;
+        _destCoord = coord;
+        _activeMultiTarget = 'dest';
+      } else if (_waypointControllers.length < 4) {
+        // Déplace l'ancienne destination vers l'arrêt et place le nouveau lieu en destination finale
+        final prevDest = _destCoord!;
+        _waypointControllers.add(TextEditingController(text: prevDest.name ?? 'Arrêt'));
+        _waypointCoords.add(prevDest);
+        _destController.text = place.nom;
+        _destCoord = coord;
+        _activeMultiTarget = 'dest';
+      }
+    });
+    _tabController.animateTo(1);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('« ${place.nom} » ajouté à votre trajet (${1 + _waypointCoords.where((w) => w != null).length} lieux).'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: const Color(0xFF0F766E),
+      ),
+    );
   }
 
   void _calculateMultiPointRoute() {
     final orig = _originCoord;
     final dest = _destCoord;
 
-    if (orig == null || dest == null) {
+    if (orig == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Veuillez définir un départ et une destination'),
+          content: Text('Touchez un lieu dans la liste pour valider le Départ.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
+      return;
+    }
+
+    for (int i = 0; i < _waypointControllers.length; i++) {
+      if (_waypointControllers[i].text.trim().isNotEmpty &&
+          _waypointCoords[i] == null) {
+        setState(() => _activeMultiTarget = 'waypoint_$i');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Touchez un lieu dans la liste pour valider l\'Arrêt ${i + 1}.'),
+            backgroundColor: const Color(0xFFD97706),
+          ),
+        );
+        return;
+      }
+    }
+
+    if (dest == null) {
+      setState(() => _activeMultiTarget = 'dest');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Touchez un lieu dans la liste pour valider la Destination finale.'),
           backgroundColor: Color(0xFFDC2626),
         ),
       );
@@ -203,7 +298,7 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
             ),
             const SizedBox(height: 8),
 
-            // Onglets de navigation : Recherche simple vs Itinéraire Google Maps
+            // Onglets de navigation : Recherche simple vs Trajet multi-lieux
             TabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
@@ -211,9 +306,14 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
               indicatorColor: AppColors.primary,
               indicatorWeight: 3,
               labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-              tabs: const [
-                Tab(icon: Icon(Icons.search_rounded, size: 20), text: 'Rechercher un lieu'),
-                Tab(icon: Icon(Icons.alt_route_rounded, size: 20), text: 'Itinéraire (Multi-points)'),
+              tabs: [
+                const Tab(icon: Icon(Icons.search_rounded, size: 20), text: 'Chercher un lieu'),
+                Tab(
+                  icon: const Icon(Icons.alt_route_rounded, size: 20),
+                  text: _waypointCoords.any((w) => w != null)
+                      ? 'Trajet (${1 + _waypointCoords.where((w) => w != null).length} lieux)'
+                      : 'Plusieurs arrêts',
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -392,59 +492,116 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
           child: Column(
             children: [
               // 1. Champ Départ
-              Row(
-                children: [
-                  const Icon(Icons.trip_origin_rounded, color: Color(0xFF0F766E), size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _originController,
-                      decoration: const InputDecoration(
-                        hintText: 'Point de départ (par défaut: Ma position)',
-                        border: InputBorder.none,
-                        isDense: true,
-                      ),
-                      onChanged: (v) {
-                        ref.read(searchQueryProvider.notifier).setQuery(v);
-                      },
+              InkWell(
+                onTap: () => setState(() => _activeMultiTarget = 'origin'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _activeMultiTarget == 'origin'
+                          ? const Color(0xFF0F766E)
+                          : Colors.transparent,
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.swap_vert_rounded, color: Color(0xFF0F766E)),
-                    tooltip: 'Inverser départ et arrivée',
-                    onPressed: _swapOriginAndDestination,
+                  child: Row(
+                    children: [
+                      const Icon(Icons.trip_origin_rounded, color: Color(0xFF0F766E), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _originController,
+                          onTap: () => setState(() => _activeMultiTarget = 'origin'),
+                          decoration: const InputDecoration(
+                            hintText: 'Départ (ex: Ma position, Maison...)',
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              _activeMultiTarget = 'origin';
+                              _originCoord = null;
+                            });
+                            ref.read(searchQueryProvider.notifier).setQuery(v);
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.my_location_rounded, size: 18, color: Color(0xFF0F766E)),
+                        tooltip: 'Utiliser ma position GPS',
+                        onPressed: () {
+                          final lastGps = ref.read(locationServiceProvider).last;
+                          final loc = ref.read(currentLocationProvider);
+                          setState(() {
+                            _originController.text = 'Ma position GPS';
+                            _originCoord = CoordinateModel(
+                              lat: lastGps?.latitude ?? loc.lat,
+                              lon: lastGps?.longitude ?? loc.lon,
+                              name: 'Ma position GPS',
+                            );
+                            _activeMultiTarget = 'dest';
+                          });
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.swap_vert_rounded, color: Color(0xFF0F766E)),
+                        tooltip: 'Inverser départ et arrivée',
+                        onPressed: _swapOriginAndDestination,
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-              const Divider(height: 16, thickness: 1, color: Color(0xFFE2E8F0)),
+              const Divider(height: 14, thickness: 1, color: Color(0xFFE2E8F0)),
 
               // Étapes intermédiaires éventuelles
               ...List.generate(_waypointControllers.length, (idx) {
+                final targetKey = 'waypoint_$idx';
+                final isWpActive = _activeMultiTarget == targetKey;
                 return Column(
                   children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.radio_button_checked_rounded,
-                            color: Color(0xFFF59E0B), size: 18),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextField(
-                            controller: _waypointControllers[idx],
-                            decoration: InputDecoration(
-                              hintText: 'Étape ${idx + 1}...',
-                              border: InputBorder.none,
-                              isDense: true,
-                            ),
-                            onChanged: (v) {
-                              ref.read(searchQueryProvider.notifier).setQuery(v);
-                            },
+                    InkWell(
+                      onTap: () => setState(() => _activeMultiTarget = targetKey),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isWpActive ? const Color(0xFFF59E0B) : Colors.transparent,
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.close_rounded, size: 18, color: Colors.grey),
-                          onPressed: () => _removeWaypoint(idx),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.radio_button_checked_rounded,
+                                color: Color(0xFFF59E0B), size: 18),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: TextField(
+                                controller: _waypointControllers[idx],
+                                onTap: () => setState(() => _activeMultiTarget = targetKey),
+                                decoration: InputDecoration(
+                                  hintText: 'Arrêt ${idx + 1} (tapez puis choisissez ci-dessous)...',
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                ),
+                                onChanged: (v) {
+                                  setState(() {
+                                    _activeMultiTarget = targetKey;
+                                    _waypointCoords[idx] = null;
+                                  });
+                                  ref.read(searchQueryProvider.notifier).setQuery(v);
+                                },
+                              ),
+                            ),
+                            if (_waypointCoords[idx] != null)
+                              const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF10B981)),
+                            IconButton(
+                              icon: const Icon(Icons.close_rounded, size: 18, color: Colors.grey),
+                              onPressed: () => _removeWaypoint(idx),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                     const Divider(height: 12, thickness: 1, color: Color(0xFFE2E8F0)),
                   ],
@@ -452,33 +609,55 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
               }),
 
               // 2. Champ Destination
-              Row(
-                children: [
-                  const Icon(Icons.place_rounded, color: Color(0xFFDC2626), size: 20),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: TextField(
-                      controller: _destController,
-                      decoration: const InputDecoration(
-                        hintText: 'Destination finale...',
-                        border: InputBorder.none,
-                        isDense: true,
-                      ),
-                      onChanged: (v) {
-                        ref.read(searchQueryProvider.notifier).setQuery(v);
-                      },
+              InkWell(
+                onTap: () => setState(() => _activeMultiTarget = 'dest'),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: _activeMultiTarget == 'dest'
+                          ? const Color(0xFFDC2626)
+                          : Colors.transparent,
                     ),
                   ),
-                  if (_destController.text.isNotEmpty)
-                    IconButton(
-                      icon: const Icon(Icons.clear_rounded, size: 16, color: Colors.grey),
-                      onPressed: () {
-                        _destController.clear();
-                        _destCoord = null;
-                        setState(() {});
-                      },
-                    ),
-                ],
+                  child: Row(
+                    children: [
+                      const Icon(Icons.place_rounded, color: Color(0xFFDC2626), size: 20),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _destController,
+                          onTap: () => setState(() => _activeMultiTarget = 'dest'),
+                          decoration: const InputDecoration(
+                            hintText: 'Destination finale...',
+                            border: InputBorder.none,
+                            isDense: true,
+                          ),
+                          onChanged: (v) {
+                            setState(() {
+                              _activeMultiTarget = 'dest';
+                              _destCoord = null;
+                            });
+                            ref.read(searchQueryProvider.notifier).setQuery(v);
+                          },
+                        ),
+                      ),
+                      if (_destCoord != null)
+                        const Icon(Icons.check_circle_rounded, size: 16, color: Color(0xFF10B981)),
+                      if (_destController.text.isNotEmpty)
+                        IconButton(
+                          icon: const Icon(Icons.clear_rounded, size: 16, color: Colors.grey),
+                          onPressed: () {
+                            _destController.clear();
+                            _destCoord = null;
+                            _activeMultiTarget = 'dest';
+                            setState(() {});
+                          },
+                        ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
@@ -528,10 +707,30 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
         ),
         const SizedBox(height: 16),
 
-        // Suggestions rapides de lieux
-        const Text(
-          'Sélectionner rapidement un lieu pour la destination :',
-          style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF475569)),
+        // Indicateur explicite du champ cible en cours de saisie
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF0FDFA),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: const Color(0xFFCCFBF1)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.touch_app_rounded, size: 16, color: Color(0xFF0F766E)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Touchez un lieu ci-dessous pour remplir : ${_activeMultiTargetLabel()}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F766E),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 8),
 
@@ -584,16 +783,7 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
       title: Text(place.nom, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
       subtitle: Text(place.subtitle, style: const TextStyle(fontSize: 11, color: Colors.grey)),
       trailing: const Icon(Icons.add_circle_outline_rounded, size: 18, color: Color(0xFF0F766E)),
-      onTap: () {
-        setState(() {
-          _destController.text = place.nom;
-          _destCoord = CoordinateModel(
-            lat: place.latitude,
-            lon: place.longitude,
-            name: place.nom,
-          );
-        });
-      },
+      onTap: () => _assignPlaceToActiveField(place),
     );
   }
 
@@ -827,7 +1017,7 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
                   const Icon(Icons.near_me_rounded, size: 18, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text(
-                    'Lieux à proximité à Ouagadougou',
+                    'Lieux à proximité',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
@@ -994,28 +1184,39 @@ class _PlacesSearchSheetState extends ConsumerState<PlacesSearchSheet>
             ),
         ],
       ),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: AppColors.primary.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.directions_rounded, size: 16, color: AppColors.primary),
-            SizedBox(width: 4),
-            Text(
-              'Itinéraire',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
-              ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () => _addPlaceAsMultiStop(place),
+            icon: const Icon(Icons.add_road_rounded, size: 20, color: Color(0xFF0F766E)),
+            tooltip: 'Ajouter comme arrêt (Multi-lieux)',
+            visualDensity: VisualDensity.compact,
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.primary.withValues(alpha: 0.2)),
             ),
-          ],
-        ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: const [
+                Icon(Icons.directions_rounded, size: 16, color: AppColors.primary),
+                SizedBox(width: 4),
+                Text(
+                  'Aller',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
       onTap: () {
         ref.read(searchHistoryProvider.notifier).addPlace(place);

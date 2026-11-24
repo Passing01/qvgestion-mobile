@@ -72,6 +72,7 @@ void main() {
               ]),
           currentWeatherProvider.overrideWith((ref) async => testWeather),
           availableOfflinePacksProvider.overrideWith((ref) async => []),
+          myFavoritesProvider.overrideWith((ref) async => const []),
           activeReportsProvider.overrideWith(FakeActiveReportsNotifier.new),
         ],
         child: const QvGestionApp(),
@@ -83,9 +84,9 @@ void main() {
     // 1. Vérification de l'en-tête officiel FASO NAV
     expect(find.text('FASO NAV'), findsOneWidget);
 
-    // 2. Vérification des onglets de la Bottom Navigation Bar publique (Itinéraires unifié dans Explorer)
-    expect(find.text('Explorer'), findsWidgets);
-    expect(find.text('Sauvegardés'), findsOneWidget);
+    // 2. Vérification des onglets de la Bottom Navigation Bar publique
+    expect(find.text('Carte'), findsOneWidget);
+    expect(find.text('Mes adresses'), findsOneWidget);
     expect(find.text('Compte'), findsOneWidget);
     expect(find.text('Itinéraires'), findsNothing);
     expect(find.text('Admin'), findsNothing);

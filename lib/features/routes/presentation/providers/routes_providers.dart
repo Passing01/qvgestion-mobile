@@ -36,6 +36,23 @@ final selectedRouteModeProvider =
   SelectedRouteModeNotifier.new,
 );
 
+/// Étapes intermédiaires sélectionnées pour les itinéraires multi-lieux
+class SelectedWaypointsNotifier extends Notifier<List<CoordinateModel>> {
+  @override
+  List<CoordinateModel> build() => const [];
+
+  void setWaypoints(List<CoordinateModel> waypoints) {
+    state = List<CoordinateModel>.unmodifiable(waypoints);
+  }
+
+  void clear() => state = const [];
+}
+
+final selectedWaypointsProvider =
+    NotifierProvider<SelectedWaypointsNotifier, List<CoordinateModel>>(
+  SelectedWaypointsNotifier.new,
+);
+
 /// État du calcul d'itinéraire actif
 class ActiveRouteNotifier extends Notifier<AsyncValue<RouteModel?>> {
   @override
@@ -108,6 +125,7 @@ final multiModeRoutesProvider =
     FutureProvider<Map<String, RouteModel>>((ref) async {
   final selectedPlace = ref.watch(selectedPlaceProvider);
   if (selectedPlace == null) return {};
+  final waypoints = ref.watch(selectedWaypointsProvider);
 
   final locService = ref.read(locationServiceProvider);
   final lastGps = locService.last;
@@ -140,6 +158,7 @@ final multiModeRoutesProvider =
         final route = await repository.calculateRoute(
           origin: origin,
           destination: destination,
+          waypoints: waypoints.isNotEmpty ? waypoints : null,
           mode: m,
         );
         results[m] = route;

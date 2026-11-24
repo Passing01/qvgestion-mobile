@@ -46,15 +46,15 @@ class FasoNavBottomBar extends StatelessWidget {
             children: [
               _buildNavItem(
                 tab: FasoNavTab.explorer,
-                label: 'Explorer',
-                icon: Icons.explore_outlined,
-                activeIcon: Icons.explore_rounded,
+                label: 'Carte',
+                icon: Icons.map_outlined,
+                activeIcon: Icons.map_rounded,
               ),
               _buildNavItem(
                 tab: FasoNavTab.sauvegardes,
-                label: 'Sauvegardés',
-                icon: Icons.cloud_download_outlined,
-                activeIcon: Icons.cloud_download_rounded,
+                label: 'Mes adresses',
+                icon: Icons.bookmarks_outlined,
+                activeIcon: Icons.bookmarks_rounded,
               ),
               _buildNavItem(
                 tab: FasoNavTab.compte,

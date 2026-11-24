@@ -1464,6 +1464,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     required String mode,
     String source = 'lieu touché',
   }) {
+    ref.read(selectedWaypointsProvider.notifier).clear();
     AppLogger.i(
       'Démarrage itinéraire vers ${destinationPlace.nom} (source: $source, mode: $mode)',
     );
@@ -1540,6 +1541,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       );
 
       ref.read(selectedRouteModeProvider.notifier).selectMode(plan.mode);
+      ref.read(selectedWaypointsProvider.notifier).setWaypoints(plan.waypoints);
+      ref.read(selectedPlaceProvider.notifier).select(
+            PlaceModel(
+              id: 0,
+              nom: plan.destination.name ?? 'Destination',
+              categorieId: 0,
+              latitude: plan.destination.lat,
+              longitude: plan.destination.lon,
+            ),
+          );
       ref.read(activeRouteProvider.notifier).setRoute(route);
       await mapService.setRoute(route);
       await mapService.setTransportMode(plan.mode);
@@ -2310,197 +2321,61 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
             ),
 
-          // 1.2 CONTRÔLES FLOTTANTS CARTE (Signalement, Centrage GPS - visible aussi en navigation Étape 8 Règle 6)
+          // 1.2 CONTRÔLES FLOTTANTS CARTE SIMPLIFIÉS (Signaler, Noter ici, Centrer — styles regroupés dans Carte • 3D)
           Positioned(
-            right: 16,
+            right: 14,
             bottom: isDesktop ? 34 : 190,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Tooltip(
-                  message: 'Signaler un danger ou une voie barrée',
-                  child: GestureDetector(
-                    key: const Key('fab_report_hazard'),
-                    onTap: () => ReportIncidentModal.show(context),
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFFEF2F2),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFCA5A5),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFDC2626).withValues(alpha: 0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.campaign_rounded,
-                        color: Color(0xFFDC2626),
-                        size: 24,
-                      ),
-                    ),
-                  ),
+                _buildSimpleMapFab(
+                  key: const Key('fab_report_hazard'),
+                  icon: Icons.campaign_rounded,
+                  label: 'Signaler',
+                  bgColor: const Color(0xFFFEF2F2),
+                  borderColor: const Color(0xFFFCA5A5),
+                  iconColor: const Color(0xFFDC2626),
+                  tooltip: 'Signaler un danger ou une voie barrée',
+                  onTap: () => ReportIncidentModal.show(context),
                 ),
-                const SizedBox(height: 12),
-                // Bouton bascule Mode Satellite
-                Tooltip(
-                  message: 'Vue Satellite / Carte classique',
-                  child: GestureDetector(
-                    key: const Key('fab_toggle_satellite'),
-                    onTap: () {
-                      ref.read(is3dMapModeProvider.notifier).set3d(false);
-                      ref.read(isSatelliteModeProvider.notifier).toggle();
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: isSatellite ? AppColors.primary : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSatellite
-                              ? AppColors.primary
-                              : const Color(0xFFE5E7EB),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        Icons.satellite_alt_rounded,
-                        color: isSatellite
-                            ? Colors.white
-                            : const Color(0xFF4B5563),
-                        size: 22,
-                      ),
-                    ),
-                  ),
+                const SizedBox(height: 10),
+                _buildSimpleMapFab(
+                  key: const Key('fab_save_location'),
+                  icon: Icons.bookmark_add_rounded,
+                  label: 'Noter ici',
+                  bgColor: Colors.white,
+                  borderColor: const Color(0xFFE5E7EB),
+                  iconColor: const Color(0xFF0F766E),
+                  tooltip: 'Enregistrer cet endroit sur la carte',
+                  onTap: () {
+                    final lastGps = ref.read(locationServiceProvider).last;
+                    final loc = ref.read(currentLocationProvider);
+                    final lat = lastGps?.latitude ?? loc.lat;
+                    final lon = lastGps?.longitude ?? loc.lon;
+                    SavePlaceModal.show(
+                      context,
+                      latitude: lat,
+                      longitude: lon,
+                      initialName: 'Ma position',
+                    );
+                  },
                 ),
-                const SizedBox(height: 12),
-                // Bouton bascule Mode Plein Soleil / Nuit
-                Tooltip(
-                  message: 'Mode Jour / Nuit',
-                  child: GestureDetector(
-                    key: const Key('fab_toggle_theme'),
-                    onTap: () {
-                      ref.read(is3dMapModeProvider.notifier).set3d(false);
-                      ref.read(themeModeProvider.notifier).toggle();
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        isDark
-                            ? Icons.light_mode_rounded
-                            : Icons.dark_mode_rounded,
-                        color: isDark
-                            ? const Color(0xFFF59E0B)
-                            : const Color(0xFF4B5563),
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Bouton Enregistrer / Créer un lieu depuis ma position
-                Tooltip(
-                  message: 'Enregistrer cet endroit sur la carte',
-                  child: GestureDetector(
-                    key: const Key('fab_save_location'),
-                    onTap: () {
-                      final lastGps = ref.read(locationServiceProvider).last;
-                      final loc = ref.read(currentLocationProvider);
-                      final lat = lastGps?.latitude ?? loc.lat;
-                      final lon = lastGps?.longitude ?? loc.lon;
-                      SavePlaceModal.show(
-                        context,
-                        latitude: lat,
-                        longitude: lon,
-                        initialName: 'Ma position',
-                      );
-                    },
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: const Color(0xFFE5E7EB)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.bookmark_add_rounded,
-                        color: Color(0xFF0F766E),
-                        size: 24,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Tooltip(
-                  message: 'Recentrer sur ma position',
-                  child: GestureDetector(
-                    key: const Key('fab_recenter'),
-                    onTap: _recenter,
-                    child: Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: _following ? AppColors.primary : Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: _following
-                              ? AppColors.primary
-                              : const Color(0xFFE5E7EB),
-                          width: _following ? 2 : 1,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Icon(
-                        _following
-                            ? Icons.gps_fixed_rounded
-                            : Icons.my_location_rounded,
-                        color: _following ? Colors.white : AppColors.primary,
-                        size: 24,
-                      ),
-                    ),
-                  ),
+                const SizedBox(height: 10),
+                _buildSimpleMapFab(
+                  key: const Key('fab_recenter'),
+                  icon: _following
+                      ? Icons.gps_fixed_rounded
+                      : Icons.my_location_rounded,
+                  label: 'Centrer',
+                  bgColor: _following ? AppColors.primary : Colors.white,
+                  borderColor: _following
+                      ? AppColors.primary
+                      : const Color(0xFFE5E7EB),
+                  iconColor: _following ? Colors.white : AppColors.primary,
+                  textColor: _following ? Colors.white : const Color(0xFF1F2937),
+                  tooltip: 'Recentrer sur ma position',
+                  onTap: _recenter,
                 ),
               ],
             ),
@@ -2650,7 +2525,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                             vertical: 9,
                           ),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFDC2626),
+                            color: const Color(0xFFD97706),
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
@@ -2663,14 +2538,14 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                           child: const Row(
                             children: [
                               Icon(
-                                Icons.gps_off_rounded,
+                                Icons.location_searching_rounded,
                                 color: Colors.white,
                                 size: 18,
                               ),
                               SizedBox(width: 8),
                               Expanded(
                                 child: Text(
-                                  'Signal GPS perdu',
+                                  'Recherche de votre position...',
                                   style: TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
@@ -4087,6 +3962,57 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 Icons.keyboard_arrow_up_rounded,
                 color: Color(0xFF64748B),
                 size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Bouton flottant simplifié avec icône + libellé clair pour le grand public.
+  Widget _buildSimpleMapFab({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required Color bgColor,
+    required Color borderColor,
+    required Color iconColor,
+    Color textColor = const Color(0xFF1F2937),
+    required String tooltip,
+    required VoidCallback onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        key: key,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 9),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: borderColor, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.12),
+                blurRadius: 10,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: iconColor, size: 20),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  color: textColor,
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),

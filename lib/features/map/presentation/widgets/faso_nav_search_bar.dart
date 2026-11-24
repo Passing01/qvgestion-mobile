@@ -43,24 +43,24 @@ class FasoNavSearchBar extends StatelessWidget {
               const SizedBox(width: 12),
               const Expanded(
                 child: Text(
-                  'Rechercher un lieu, carrefour, maquis...',
+                  'Où allez-vous ? (marché, pharmacie...)',
                   style: TextStyle(
-                    color: Color(0xFF9CA3AF),
+                    color: Color(0xFF6B7280),
                     fontSize: 14,
-                    fontWeight: FontWeight.w400,
+                    fontWeight: FontWeight.w500,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // Bouton Micro bleu
+              // Bouton Parler visible façon vocal WhatsApp
               GestureDetector(
+                key: const Key('btn_voice_search_pill'),
                 onTap: onVoiceTap,
                 child: Container(
-                  width: 36,
-                  height: 36,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: AppColors.primary,
-                    shape: BoxShape.circle,
+                    borderRadius: BorderRadius.circular(20),
                     boxShadow: [
                       BoxShadow(
                         color: AppColors.primary.withValues(alpha: 0.3),
@@ -69,27 +69,24 @@ class FasoNavSearchBar extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: const Icon(
-                    Icons.mic_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              // Badge "FN" (Faso Nav)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE5E7EB),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'FN',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF4B5563),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.mic_rounded,
+                        color: Colors.white,
+                        size: 18,
+                      ),
+                      SizedBox(width: 4),
+                      Text(
+                        'Parler',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
