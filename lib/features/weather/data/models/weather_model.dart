@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:qvgestion_mobile/core/utils/burkina_geo_helper.dart';
 
 /// Modèle météo retourné par le backend QvGestion /weather/current
 class WeatherModel extends Equatable {
@@ -48,10 +49,11 @@ class WeatherModel extends Equatable {
     );
   }
 
-  /// Chaîne formatée pour le bandeau supérieur de l'application (ex: "Ouagadougou 32°C")
+  /// Chaîne formatée pour le bandeau supérieur selon la ville détectée (ex: "Bobo-Dioulasso 28°C")
   String get formattedTicker {
     final temp = temperatureCelsius.round();
-    return 'Ouagadougou $temp°C';
+    final city = BurkinaGeoHelper.detectCityAndRegion(latitude, longitude).city;
+    return '$city $temp°C';
   }
 
   @override

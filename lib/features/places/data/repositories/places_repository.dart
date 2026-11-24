@@ -17,6 +17,7 @@ import 'package:qvgestion_mobile/features/places/presentation/providers/places_p
 class PlacesRepository {
   final ApiClient apiClient;
   static const String _placesCacheKey = 'qvgestion_cached_places_v1';
+  static const String _favoritesCacheKey = 'qvgestion_my_favorites_v1';
 
   PlacesRepository({required this.apiClient});
 
@@ -759,6 +760,45 @@ class PlacesRepository {
     } catch (e) {
       AppLogger.e('Erreur lors de la création du lieu: $e');
       rethrow;
+    }
+  }
+
+  /// Persiste publiquement des lieux téléchargés (ex: pack régional) dans le cache hors-ligne.
+  Future<void> cachePlacesList(List<PlaceModel> places) =>
+      _savePlacesToCache(places);
+
+  /// Récupère les favoris réels de l'utilisateur (GET /api/v1/places/favorites)
+  /// avec repli hors-ligne sur SharedPreferences.
+  Future<List<PlaceModel>> getMyFavorites() async {
+    try {
+      final response = await apiClient.get<dynamic>(ApiEndpoints.userFavorites);
+      final rawList = response.data as List<dynamic>? ?? const [];
+      final favPlaces = <PlaceModel>[];
+      for (final item in rawList) {
+        if (item is Map && item['lieu'] is Map) {
+          final place = PlaceModel.fromJson(
+            Map<String, dynamic>.from(item['lieu'] as Map),
+          ).copyWith(isFavorite: true);
+          favPlaces.add(place);
+        }
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setStringList(
+        _favoritesCacheKey,
+        favPlaces.map((p) => jsonEncode(p.toJson())).toList(),
+      );
+      return favPlaces;
+    } catch (e) {
+      AppLogger.i('Favoris distants indisponibles, lecture cache hors-ligne: $e');
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getStringList(_favoritesCacheKey) ?? const [];
+        return cached
+            .map((s) => PlaceModel.fromJson(jsonDecode(s) as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        return const [];
+      }
     }
   }
 

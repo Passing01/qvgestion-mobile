@@ -778,12 +778,120 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
     }
 
-    // Échec du recalcul (ex: réseau coupé) : conserver l'ancien tracé, nouvel essai après 10 s
+    // Échec du recalcul (ex: réseau coupé / fin de forfait) : basculer sur un guidage hors-ligne local vers la destination
     _navEngine?.onRerouteFailed();
+    final offlineFallback = _buildOfflineRecoveryRoute(
+      currentPos: currentPos,
+      destLat: destLat,
+      destLon: destLon,
+      destName: destPlace?.nom ?? 'Destination',
+      mode: mode,
+    );
+    final offlineGeom = RouteGeometry.fromRoute(offlineFallback);
+    if (NavigationEngine.canStart(offlineGeom) == null) {
+      _navEngine = NavigationEngine(offlineGeom);
+      _arrivalAnnounced = false;
+      _announcer?.reset();
+      final u = _navEngine!.onFix(currentPos, 10.0, DateTime.now());
+      _guideSteps = buildGuideSteps(
+        route: offlineFallback,
+        enrichedRoute: null,
+        places: ref.read(placesStateProvider).placesList,
+      );
+      await ref.read(mapServiceProvider).setRoute(offlineFallback, fitCamera: false);
+      setState(() {
+        _lastNavUpdate = u;
+        _isReroutingInFlight = false;
+        _rerouteErrorBanner =
+            'Connexion perdue • Guidage hors-ligne maintenu vers ${destPlace?.nom ?? 'votre destination'}.';
+      });
+      return;
+    }
+
     setState(() {
       _isReroutingInFlight = false;
-      _rerouteErrorBanner = 'Recalcul impossible (réseau coupé). Maintien du tracé actuel, nouvel essai dans 10 s.';
+      _rerouteErrorBanner =
+          'Réseau coupé • Maintien du tracé hors-ligne, nouvel essai dès le retour du signal.';
     });
+  }
+
+  /// Construit un itinéraire hors-ligne de secours (cap boussole + distance réelle)
+  /// lorsque la connexion internet coupe pendant un trajet en cours.
+  RouteModel _buildOfflineRecoveryRoute({
+    required LatLng currentPos,
+    required double destLat,
+    required double destLon,
+    required String destName,
+    required String mode,
+  }) {
+    final distM = const Distance().as(
+      LengthUnit.Meter,
+      currentPos,
+      LatLng(destLat, destLon),
+    );
+    final bearingDeg = const Distance().bearing(
+      currentPos,
+      LatLng(destLat, destLon),
+    );
+    final cardinal = _bearingToCardinalFr(bearingDeg);
+    final speedMps = mode.contains('voiture') || mode.contains('auto')
+        ? 9.0
+        : (mode.contains('pied') ? 1.3 : 8.5);
+    final durSec = math.max(15, (distM / speedMps).round());
+    final distRounded = distM >= 1000
+        ? '${(distM / 1000).toStringAsFixed(1)} km'
+        : '${distM.round()} m';
+
+    return RouteModel(
+      mode: mode,
+      distanceMeters: distM,
+      durationSeconds: durSec,
+      durationFormatted: durSec >= 60 ? '${(durSec / 60).round()} min' : '${durSec}s',
+      geometry: [
+        [currentPos.latitude, currentPos.longitude],
+        [destLat, destLon],
+      ],
+      boundingBox: [
+        math.min(currentPos.latitude, destLat),
+        math.min(currentPos.longitude, destLon),
+        math.max(currentPos.latitude, destLat),
+        math.max(currentPos.longitude, destLon),
+      ],
+      engine: 'offline_recovery',
+      maneuvers: [
+        ManeuverModel(
+          order: 1,
+          instruction: 'Mode hors-ligne : suivez la direction $cardinal sur $distRounded vers $destName',
+          maneuverType: 'continue',
+          distanceMeters: distM,
+          durationSeconds: durSec,
+          location: CoordinateModel(lat: currentPos.latitude, lon: currentPos.longitude),
+        ),
+        ManeuverModel(
+          order: 2,
+          instruction: 'Vous êtes arrivé à $destName',
+          maneuverType: 'arrive',
+          distanceMeters: 0.0,
+          durationSeconds: 0,
+          location: CoordinateModel(lat: destLat, lon: destLon),
+        ),
+      ],
+    );
+  }
+
+  String _bearingToCardinalFr(double bearingDeg) {
+    final b = ((bearingDeg % 360) + 360) % 360;
+    const dirs = [
+      'Nord',
+      'Nord-Est',
+      'Est',
+      'Sud-Est',
+      'Sud',
+      'Sud-Ouest',
+      'Ouest',
+      'Nord-Ouest',
+    ];
+    return dirs[((b + 22.5) / 45.0).floor() % 8];
   }
 
   /// Étape 8 · Règles 1 & 2 : Validation stricte et démarrage de la navigation
@@ -949,6 +1057,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       // Règle 7 : Activer le service de premier plan + WakeLock sur Android pendant la course
       if (!_isUnderWidgetTest && (_permissionOk || !kIsWeb)) {
         await locService.setNavigationMode(true);
+      }
+      // Anticipation hors-ligne : pré-mise en cache des lieux utiles du corridor si la connexion coupe
+      if (!_isUnderWidgetTest) {
+        unawaited(
+          ref.read(placesRepositoryProvider).downloadPlacesForOffline(const [
+            'pharmacie',
+            'station-service',
+            'hopital-sante',
+          ]),
+        );
       }
 
       // Premier calcul de progression immédiat au démarrage
@@ -2008,14 +2126,9 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               key: const Key('faso_map_widget'),
               styleUrl: styleUrl,
               attributionText: attributionText,
-              myLocationEnabled: _permissionOk,
-              myLocationTrackingMode:
-                  (_following &&
-                      !(screenState == MapScreenState.activeNavigation &&
-                          (navViewMode == NavigationViewMode.buildings3d ||
-                              isRadarView)))
-                  ? maplibre.MyLocationTrackingMode.tracking
-                  : maplibre.MyLocationTrackingMode.none,
+              // Point GPS natif désactivé car FASO NAV affiche déjà son propre marqueur unifié (évite les 2 points bleus)
+              myLocationEnabled: false,
+              myLocationTrackingMode: maplibre.MyLocationTrackingMode.none,
               onCameraTrackingDismissed: () {
                 if (mounted && _following) {
                   setState(() => _following = false);
@@ -2155,8 +2268,10 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               ),
             ),
 
-          // 1.1 BADGE FLOTTANT "Hors-ligne prêt" (Mobile uniquement en bas à gauche; sur Desktop déplacé en haut à droite)
-          if (screenState != MapScreenState.activeNavigation && !isDesktop)
+          // 1.1 BADGE FLOTTANT "Hors-ligne" : affiché UNIQUEMENT lorsque la connexion est réellement coupée
+          if (placesState.isOffline == true &&
+              screenState != MapScreenState.activeNavigation &&
+              !isDesktop)
             Positioned(
               left: 20,
               bottom: 300,
@@ -2169,11 +2284,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               left: 16,
               bottom: isDesktop
                   ? 34
-                  : (screenState == MapScreenState.activeNavigation ? 190 : 344),
+                  : (screenState == MapScreenState.activeNavigation
+                      ? 190
+                      : (placesState.isOffline == true ? 344 : 300)),
               child: _buildAdminQuickMapToolbar(),
             ),
 
-          // 1.1b CONTRÔLES TOP-DROITE DESKTOP : Statut hors-ligne + sélecteur Cartes • 3D
+          // 1.1b CONTRÔLES TOP-DROITE DESKTOP : Statut hors-ligne (si coupé) + sélecteur Cartes • 3D
           if (isDesktop)
             Positioned(
               top: 16,
@@ -2182,7 +2299,8 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (screenState != MapScreenState.activeNavigation) ...[
+                    if (placesState.isOffline == true &&
+                        screenState != MapScreenState.activeNavigation) ...[
                       _buildOfflineStatusPill(placesState),
                       const SizedBox(width: 10),
                     ],
@@ -2199,173 +2317,188 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                GestureDetector(
-                  key: const Key('fab_report_hazard'),
-                  onTap: () => ReportIncidentModal.show(context),
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFEF2F2),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: const Color(0xFFFCA5A5),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFDC2626).withValues(alpha: 0.2),
-                          blurRadius: 10,
-                          offset: const Offset(0, 3),
+                Tooltip(
+                  message: 'Signaler un danger ou une voie barrée',
+                  child: GestureDetector(
+                    key: const Key('fab_report_hazard'),
+                    onTap: () => ReportIncidentModal.show(context),
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFEF2F2),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(0xFFFCA5A5),
+                          width: 1.5,
                         ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.campaign_rounded,
-                      color: Color(0xFFDC2626),
-                      size: 24,
+                        boxShadow: [
+                          BoxShadow(
+                            color: const Color(0xFFDC2626).withValues(alpha: 0.2),
+                            blurRadius: 10,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.campaign_rounded,
+                        color: Color(0xFFDC2626),
+                        size: 24,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 // Bouton bascule Mode Satellite
-                GestureDetector(
-                  key: const Key('fab_toggle_satellite'),
-                  onTap: () {
-                    ref.read(is3dMapModeProvider.notifier).set3d(false);
-                    ref.read(isSatelliteModeProvider.notifier).toggle();
-                  },
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: isSatellite ? AppColors.primary : Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: isSatellite
-                            ? AppColors.primary
-                            : const Color(0xFFE5E7EB),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
+                Tooltip(
+                  message: 'Vue Satellite / Carte classique',
+                  child: GestureDetector(
+                    key: const Key('fab_toggle_satellite'),
+                    onTap: () {
+                      ref.read(is3dMapModeProvider.notifier).set3d(false);
+                      ref.read(isSatelliteModeProvider.notifier).toggle();
+                    },
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: isSatellite ? AppColors.primary : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: isSatellite
+                              ? AppColors.primary
+                              : const Color(0xFFE5E7EB),
+                          width: 1.5,
                         ),
-                      ],
-                    ),
-                    child: Icon(
-                      Icons.satellite_alt_rounded,
-                      color: isSatellite
-                          ? Colors.white
-                          : const Color(0xFF4B5563),
-                      size: 22,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        Icons.satellite_alt_rounded,
+                        color: isSatellite
+                            ? Colors.white
+                            : const Color(0xFF4B5563),
+                        size: 22,
+                      ),
                     ),
                   ),
                 ),
                 const SizedBox(height: 12),
                 // Bouton bascule Mode Plein Soleil / Nuit
-                GestureDetector(
-                  key: const Key('fab_toggle_theme'),
-                  onTap: () {
-                    ref.read(is3dMapModeProvider.notifier).set3d(false);
-                    ref.read(themeModeProvider.notifier).toggle();
-                  },
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: Icon(
-                      isDark
-                          ? Icons.light_mode_rounded
-                          : Icons.dark_mode_rounded,
-                      color: isDark
-                          ? const Color(0xFFF59E0B)
-                          : const Color(0xFF4B5563),
-                      size: 24,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                // Bouton Enregistrer / Créer un lieu depuis ma position (style Google Maps)
-                GestureDetector(
-                  key: const Key('fab_save_location'),
-                  onTap: () {
-                    final lastGps = ref.read(locationServiceProvider).last;
-                    final loc = ref.read(currentLocationProvider);
-                    final lat = lastGps?.latitude ?? loc.lat;
-                    final lon = lastGps?.longitude ?? loc.lon;
-                    SavePlaceModal.show(
-                      context,
-                      latitude: lat,
-                      longitude: lon,
-                      initialName: 'Ma position',
-                    );
-                  },
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFFE5E7EB)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.bookmark_add_rounded,
-                      color: Color(0xFF0F766E),
-                      size: 24,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                GestureDetector(
-                  key: const Key('fab_recenter'),
-                  onTap: _recenter,
-                  child: Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: _following ? AppColors.primary : Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: _following
-                            ? AppColors.primary
-                            : const Color(0xFFE5E7EB),
-                        width: _following ? 2 : 1,
+                Tooltip(
+                  message: 'Mode Jour / Nuit',
+                  child: GestureDetector(
+                    key: const Key('fab_toggle_theme'),
+                    onTap: () {
+                      ref.read(is3dMapModeProvider.notifier).set3d(false);
+                      ref.read(themeModeProvider.notifier).toggle();
+                    },
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
                       ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.12),
-                          blurRadius: 12,
-                          offset: const Offset(0, 4),
-                        ),
-                      ],
+                      child: Icon(
+                        isDark
+                            ? Icons.light_mode_rounded
+                            : Icons.dark_mode_rounded,
+                        color: isDark
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF4B5563),
+                        size: 24,
+                      ),
                     ),
-                    child: Icon(
-                      _following
-                          ? Icons.gps_fixed_rounded
-                          : Icons.my_location_rounded,
-                      color: _following ? Colors.white : AppColors.primary,
-                      size: 24,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Bouton Enregistrer / Créer un lieu depuis ma position
+                Tooltip(
+                  message: 'Enregistrer cet endroit sur la carte',
+                  child: GestureDetector(
+                    key: const Key('fab_save_location'),
+                    onTap: () {
+                      final lastGps = ref.read(locationServiceProvider).last;
+                      final loc = ref.read(currentLocationProvider);
+                      final lat = lastGps?.latitude ?? loc.lat;
+                      final lon = lastGps?.longitude ?? loc.lon;
+                      SavePlaceModal.show(
+                        context,
+                        latitude: lat,
+                        longitude: lon,
+                        initialName: 'Ma position',
+                      );
+                    },
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: const Color(0xFFE5E7EB)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.bookmark_add_rounded,
+                        color: Color(0xFF0F766E),
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Tooltip(
+                  message: 'Recentrer sur ma position',
+                  child: GestureDetector(
+                    key: const Key('fab_recenter'),
+                    onTap: _recenter,
+                    child: Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: _following ? AppColors.primary : Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: _following
+                              ? AppColors.primary
+                              : const Color(0xFFE5E7EB),
+                          width: _following ? 2 : 1,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        _following
+                            ? Icons.gps_fixed_rounded
+                            : Icons.my_location_rounded,
+                        color: _following ? Colors.white : AppColors.primary,
+                        size: 24,
+                      ),
                     ),
                   ),
                 ),
@@ -2452,7 +2585,17 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                             ),
                           ],
                         )
-                      : null,
+                      : BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.94),
+                              Colors.white.withValues(alpha: 0.80),
+                              Colors.white.withValues(alpha: 0.0),
+                            ],
+                          ),
+                        ),
                   padding: isDesktop
                       ? const EdgeInsets.only(top: 6, bottom: 12)
                       : null,

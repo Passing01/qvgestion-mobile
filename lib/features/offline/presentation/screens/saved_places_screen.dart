@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
 import 'package:qvgestion_mobile/core/widgets/feedback/app_snackbar.dart';
+import 'package:qvgestion_mobile/features/navigation/presentation/providers/navigation_providers.dart';
+import 'package:qvgestion_mobile/features/navigation/presentation/widgets/faso_nav_bottom_bar.dart';
 import 'package:qvgestion_mobile/features/offline/data/models/offline_pack_model.dart';
 import 'package:qvgestion_mobile/features/offline/presentation/providers/offline_providers.dart';
 import 'package:qvgestion_mobile/features/offline/presentation/widgets/offline_pois_modal.dart';
+import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
 
 /// Onglet 3 officiel : Lieux sauvegardés & Cartes hors-ligne (PMTiles)
 /// Entièrement dynamique et connecté à l'API Railway
@@ -15,6 +18,7 @@ class SavedPlacesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final availablePacksAsync = ref.watch(availableOfflinePacksProvider);
     final installedState = ref.watch(installedPacksProvider);
+    final favoritesAsync = ref.watch(myFavoritesProvider);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -30,10 +34,11 @@ class SavedPlacesScreen extends ConsumerWidget {
           IconButton(
             onPressed: () {
               ref.invalidate(availableOfflinePacksProvider);
+              ref.invalidate(myFavoritesProvider);
               AppSnackbar.showInfo(
                 context,
                 title: 'Synchronisation',
-                message: 'Vérification des packs régionaux sur le serveur...',
+                message: 'Actualisation des packs régionaux et favoris...',
               );
             },
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF374151)),
@@ -69,9 +74,11 @@ class SavedPlacesScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Mode Hors-Ligne Opérationnel',
-                        style: TextStyle(
+                      Text(
+                        installedState.installedPacks.isNotEmpty
+                            ? 'Lieux Hors-Ligne Sauvegardés'
+                            : 'Aucun pack hors-ligne téléchargé',
+                        style: const TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF065F46),
@@ -79,9 +86,10 @@ class SavedPlacesScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        '${installedState.installedPacks.length} région(s) installée(s) • '
-                        '${installedState.totalStorageUsedMo.toStringAsFixed(1)} Mo • '
-                        '${installedState.totalOfflinePoisCount} POI indexés',
+                        installedState.installedPacks.isNotEmpty
+                            ? '${installedState.installedPacks.length} région(s) mémorisée(s) • '
+                                '${installedState.totalOfflinePoisCount} lieux accessibles sans internet'
+                            : 'Téléchargez votre région ci-dessous avant de voyager sans connexion.',
                         style: const TextStyle(
                           fontSize: 12,
                           color: Color(0xFF047857),
@@ -174,47 +182,67 @@ class SavedPlacesScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // 3. SECTION DES LIEUX FAVORIS
-          const Text(
-            'Mes Lieux Favoris',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          // 3. SECTION DES LIEUX FAVORIS (Réels + cache hors-ligne)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Mes Lieux Favoris',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                onPressed: () => ref.invalidate(myFavoritesProvider),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                tooltip: 'Rafraîchir mes favoris',
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          _buildFavoriteItem(
-            name: 'Pharmacie du 1200 Logements',
-            subtitle: '1200 Logements • Ouvert 24h/24',
-            icon: Icons.local_pharmacy_rounded,
-            onTap: () {
-              AppSnackbar.showInfo(
-                context,
-                title: 'Favori',
-                message: 'Pharmacie 1200 Logements prête pour la navigation.',
+          const SizedBox(height: 8),
+          favoritesAsync.when(
+            data: (favorites) {
+              if (favorites.isEmpty) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFFE5E7EB)),
+                  ),
+                  child: const Text(
+                    'Aucun lieu favori enregistré pour le moment.\nTouchez un lieu sur la carte puis sur le cœur ♥ pour le retrouver ici même sans connexion.',
+                    style: TextStyle(fontSize: 12.5, color: Color(0xFF6B7280)),
+                  ),
+                );
+              }
+              return Column(
+                children: favorites.map((place) {
+                  return _buildFavoriteItem(
+                    name: place.nom,
+                    subtitle:
+                        '${place.ville}${place.quartier != null ? " • ${place.quartier}" : ""}',
+                    icon: Icons.place_rounded,
+                    onTap: () {
+                      ref
+                          .read(selectedPlaceProvider.notifier)
+                          .select(place);
+                      ref
+                          .read(currentTabProvider.notifier)
+                          .selectTab(FasoNavTab.explorer);
+                    },
+                  );
+                }).toList(),
               );
             },
-          ),
-          _buildFavoriteItem(
-            name: 'Grand Marché Rood-Woko',
-            subtitle: 'Centre-Ville • Marché central',
-            icon: Icons.storefront_rounded,
-            onTap: () {
-              AppSnackbar.showInfo(
-                context,
-                title: 'Favori',
-                message: 'Grand Marché Rood-Woko prêt pour la navigation.',
-              );
-            },
-          ),
-          _buildFavoriteItem(
-            name: 'Total Échangeur de l\'Est',
-            subtitle: 'Dassasgho • Station & Gonflage moto',
-            icon: Icons.local_gas_station_rounded,
-            onTap: () {
-              AppSnackbar.showInfo(
-                context,
-                title: 'Favori',
-                message: 'Station Total Échangeur de l\'Est prête.',
-              );
-            },
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: CircularProgressIndicator(),
+              ),
+            ),
+            error: (_, _) => const Text(
+              'Connectez-vous pour synchroniser vos favoris entre vos appareils.',
+              style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+            ),
           ),
         ],
       ),

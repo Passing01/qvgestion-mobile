@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qvgestion_mobile/core/utils/burkina_geo_helper.dart';
+import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
 import 'package:qvgestion_mobile/features/weather/presentation/providers/weather_providers.dart';
 
 /// Bandeau météo & trafic déroulant de la maquette officielle
@@ -9,15 +11,39 @@ class WeatherTrafficTicker extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final weatherAsync = ref.watch(currentWeatherProvider);
+    final loc = ref.watch(currentLocationProvider);
+    final places = ref.watch(placesStateProvider).placesList;
+
+    String detectedCity =
+        BurkinaGeoHelper.detectCityAndRegion(loc.lat, loc.lon).city;
+    for (final p in places) {
+      if (p.ville.trim().isNotEmpty &&
+          BurkinaGeoHelper.distanceMeters(
+                loc.lat,
+                loc.lon,
+                p.latitude,
+                p.longitude,
+              ) <
+              30000) {
+        detectedCity = p.ville.trim();
+        break;
+      }
+    }
 
     final String displayText = weatherAsync.when(
       data: (weather) {
         final temp = weather.temperatureCelsius.round();
-        return 'Ouagadougou $temp°C • ${weather.drivingAdvisory}';
+        final cityFromWeather = BurkinaGeoHelper.detectCityAndRegion(
+          weather.latitude,
+          weather.longitude,
+        ).city;
+        final cityLabel =
+            cityFromWeather != 'Burkina Faso' ? cityFromWeather : detectedCity;
+        return '$cityLabel $temp°C • ${weather.drivingAdvisory}';
       },
-      loading: () => 'Ouagadougou • Chargement météo & trafic...',
+      loading: () => '$detectedCity • Chargement météo & trafic...',
       error: (error, stack) =>
-          'Ouagadougou 32°C • Trafic fluide sur l\'Avenue Kwame N\'Krumah',
+          '$detectedCity • Conditions de circulation disponibles sur carte',
     );
 
     return Padding(

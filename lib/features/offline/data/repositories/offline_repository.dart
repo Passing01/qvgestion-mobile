@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:qvgestion_mobile/core/config/env_config.dart';
 import 'package:qvgestion_mobile/core/network/api_client.dart';
 import 'package:qvgestion_mobile/core/network/api_endpoints.dart';
@@ -26,16 +28,32 @@ class OfflineRepository {
     }
   }
 
+  static String _regionPoisKey(String regionId) => 'fasonav_region_pois_$regionId';
+
   /// Récupère l'index compact des POIs d'une région (GET /api/v1/offline/packs/{id}/pois)
+  /// avec sauvegarde et lecture locale dans SharedPreferences pour fonctionner hors-ligne.
   Future<OfflinePoisExportModel> getRegionPois(String regionId) async {
     try {
       final response = await apiClient.get<dynamic>(
         ApiEndpoints.offlinePackPois(regionId),
       );
-      return OfflinePoisExportModel.fromJson(
-        response.data as Map<String, dynamic>,
-      );
+      final data = Map<String, dynamic>.from(response.data as Map);
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_regionPoisKey(regionId), jsonEncode(data));
+      } catch (_) {}
+      return OfflinePoisExportModel.fromJson(data);
     } catch (e, stack) {
+      AppLogger.w('Lecture cache local POIs région $regionId suite à erreur réseau: $e');
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final cached = prefs.getString(_regionPoisKey(regionId));
+        if (cached != null && cached.isNotEmpty) {
+          return OfflinePoisExportModel.fromJson(
+            Map<String, dynamic>.from(jsonDecode(cached) as Map),
+          );
+        }
+      } catch (_) {}
       AppLogger.e('Erreur lors de l\'export des POIs de la région $regionId', e, stack);
       rethrow;
     }

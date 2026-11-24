@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qvgestion_mobile/core/theme/app_colors.dart';
+import 'package:qvgestion_mobile/features/navigation/presentation/providers/navigation_providers.dart';
+import 'package:qvgestion_mobile/features/navigation/presentation/widgets/faso_nav_bottom_bar.dart';
 import 'package:qvgestion_mobile/features/offline/data/models/offline_pack_model.dart';
 import 'package:qvgestion_mobile/features/offline/presentation/providers/offline_providers.dart';
+import 'package:qvgestion_mobile/features/places/data/models/place_model.dart';
+import 'package:qvgestion_mobile/features/places/presentation/providers/places_providers.dart';
 
 /// Modal affichant les points d'intérêts indexés dans un pack régional hors-ligne
 class OfflinePoisModal extends ConsumerWidget {
@@ -146,6 +150,23 @@ class OfflinePoisModal extends ConsumerWidget {
                       final poi = pois[index];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
+                        onTap: () {
+                          final place = PlaceModel(
+                            id: poi.id,
+                            nom: poi.nom,
+                            categorieId: 0,
+                            latitude: poi.latitude,
+                            longitude: poi.longitude,
+                            ville: pack.nomRegion,
+                            quartier: poi.quartier,
+                            telephone: poi.telephone,
+                          );
+                          ref.read(selectedPlaceProvider.notifier).select(place);
+                          ref
+                              .read(currentTabProvider.notifier)
+                              .selectTab(FasoNavTab.explorer);
+                          Navigator.of(context).pop();
+                        },
                         leading: CircleAvatar(
                           backgroundColor: AppColors.primaryLight,
                           child: Icon(

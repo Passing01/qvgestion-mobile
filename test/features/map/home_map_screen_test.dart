@@ -141,8 +141,8 @@ void main() {
     expect(find.text('Stations d\'essence'), findsOneWidget);
     expect(find.text('Pharmacies de garde'), findsOneWidget);
 
-    // 5. Badge Hors-ligne prêt sur la carte
-    expect(find.text('Hors-ligne prêt'), findsOneWidget);
+    // 5. Le badge hors-ligne n'encombre pas la carte lorsque l'usager est connecté
+    expect(find.text('Hors-ligne prêt'), findsNothing);
 
     // 6. Tiroir "Explorer le Burkina & Environs"
     expect(find.text('Explorer le Burkina & Environs'), findsOneWidget);
@@ -243,10 +243,6 @@ void main() {
     final styleRect = tester.getRect(find.byKey(const Key('fab_map_style_selector')));
     expect(styleRect.left, greaterThan(1000.0));
     expect(styleRect.top, lessThan(80.0));
-
-    final offlineRect = tester.getRect(find.textContaining('Hors-ligne'));
-    expect(offlineRect.left, greaterThan(900.0));
-    expect(offlineRect.top, lessThan(80.0));
   });
 }
 

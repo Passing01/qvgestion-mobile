@@ -1749,3 +1749,9 @@ final neighborhoodsGeoJsonProvider = FutureProvider<Map<String, dynamic>>((ref) 
   final repository = ref.watch(placesRepositoryProvider);
   return repository.getNeighborhoodsGeoJson();
 });
+
+/// Favoris réels de l'utilisateur (en ligne + repli hors-ligne local)
+final myFavoritesProvider = FutureProvider<List<PlaceModel>>((ref) async {
+  final repository = ref.watch(placesRepositoryProvider);
+  return repository.getMyFavorites();
+});
