@@ -48,6 +48,15 @@ class EnrichedManeuverModel extends Equatable {
     if (rawAnchor is Map) {
       anchorMap = <String, dynamic>{};
       rawAnchor.forEach((k, v) => anchorMap![k.toString()] = v);
+    } else if (json['anchor_type'] != null || json['landmark_name'] != null) {
+      anchorMap = <String, dynamic>{
+        'id': 'anchor_${json['order'] ?? 0}',
+        'kind': (json['anchor_type'] as String?) ?? 'place',
+        'name': (json['landmark_name'] as String?) ?? '',
+        'latitude': 0.0,
+        'longitude': 0.0,
+        if (json['anchor_side'] != null) 'side': json['anchor_side'],
+      };
     }
 
     return EnrichedManeuverModel(

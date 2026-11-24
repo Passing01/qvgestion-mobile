@@ -62,6 +62,10 @@ import 'package:qvgestion_mobile/core/widgets/sheets/poi_preview_card.dart';
 import 'package:qvgestion_mobile/features/places/presentation/widgets/place_detail_sheet.dart';
 import 'package:qvgestion_mobile/features/reports/data/models/report_model.dart';
 import 'package:qvgestion_mobile/features/reports/presentation/providers/reports_providers.dart';
+import 'package:qvgestion_mobile/features/admin/presentation/providers/admin_providers.dart';
+import 'package:qvgestion_mobile/features/admin/presentation/widgets/add_building_3d_dialog.dart';
+import 'package:qvgestion_mobile/features/admin/presentation/widgets/declare_maintenance_dialog.dart';
+import 'package:qvgestion_mobile/features/guidance/data/models/road_feature_model.dart';
 
 /// Écran principal Cartographie & Navigation QvGestion / FASO NAV
 /// Conforme à la maquette officielle avec carte OpenStreetMap fonctionnelle
@@ -74,6 +78,7 @@ class HomeMapScreen extends ConsumerStatefulWidget {
 
 class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
   bool _isDrawerCollapsed = false;
+  bool _isSavingAdminQuickAction = false;
 
   // État de simulation et mouvement du véhicule
   Timer? _simulationTimer;
@@ -1864,19 +1869,33 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
       }
     });
 
-    // Mise à jour en direct si l'admin ajoute ou supprime un bâtiment 3D
+    // Mise à jour en direct si l'admin ajoute ou supprime un bâtiment 3D (visible sur 2D et 3D)
     ref.listen<AsyncValue<Map<String, dynamic>>>(monuments3dGeoJsonProvider, (
       _,
       next,
     ) {
       next.whenData((geoJson) {
-        if (ref.read(is3dMapModeProvider) ||
-            (ref.read(mapScreenStateProvider) ==
-                    MapScreenState.activeNavigation &&
-                ref.read(navigationViewModeProvider) ==
-                    NavigationViewMode.buildings3d)) {
-          mapService.setMonuments3dGeoJson(geoJson);
-        }
+        mapService.setMonuments3dGeoJson(geoJson);
+      });
+    });
+
+    // Mise à jour en direct des feux tricolores, ponts et échangeurs sur la carte principale
+    ref.listen<AsyncValue<List<RoadFeatureModel>>>(adminRoadFeaturesProvider, (
+      _,
+      next,
+    ) {
+      next.whenData((features) {
+        mapService.setRoadFeatures(features);
+      });
+    });
+
+    // Mise à jour en direct des voies barrées et signalements sur la carte principale
+    ref.listen<AsyncValue<List<ReportModel>>>(activeReportsProvider, (
+      _,
+      next,
+    ) {
+      next.whenData((reports) {
+        mapService.setReports(reports);
       });
     });
 
@@ -1954,6 +1973,7 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
     final radarScene = ref.watch(activeRadarSceneProvider);
     final activeReports =
         ref.watch(activeReportsProvider).value ?? const <ReportModel>[];
+    final isAdminUser = ref.watch(authNotifierProvider).user?.isAdmin == true;
     final screenSize = MediaQuery.sizeOf(context);
     final isDesktop = screenSize.width >= 900.0;
 
@@ -2036,13 +2056,13 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                     );
                   }
                 }
+                final monuments = await ref
+                    .read(monuments3dGeoJsonProvider.future)
+                    .catchError(
+                      (_) => RadarSceneModel.buildFallbackMonumentsGeoJson(),
+                    );
+                await mapService.setMonuments3dGeoJson(monuments);
                 if (use3dStyleNow) {
-                  final monuments = await ref
-                      .read(monuments3dGeoJsonProvider.future)
-                      .catchError(
-                        (_) => RadarSceneModel.buildFallbackMonumentsGeoJson(),
-                      );
-                  await mapService.setMonuments3dGeoJson(monuments);
                   await mapService.setCameraTilt(
                     screenState == MapScreenState.activeNavigation &&
                             navViewMode == NavigationViewMode.buildings3d
@@ -2050,6 +2070,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                         : 52.0,
                   );
                 }
+                final roadFeatures =
+                    ref.read(adminRoadFeaturesProvider).value ??
+                    await ref
+                        .read(adminRoadFeaturesProvider.future)
+                        .catchError((_) => const <RoadFeatureModel>[]);
+                await mapService.setRoadFeatures(roadFeatures);
+                final initialReports =
+                    ref.read(activeReportsProvider).value ??
+                    const <ReportModel>[];
+                await mapService.setReports(initialReports);
                 await _refreshPlaces();
               },
               onTap: (point, latLng) async {
@@ -2113,6 +2143,16 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
               left: 20,
               bottom: 300,
               child: _buildOfflineStatusPill(placesState),
+            ),
+
+          // 1.1a BARRE D'ACTION RAPIDE ADMIN SUR LA CARTE (Feu en 1 clic, Repère, Voie barrée, Bâtiment 3D)
+          if (isAdminUser && !isRadarView)
+            Positioned(
+              left: 16,
+              bottom: isDesktop
+                  ? 34
+                  : (screenState == MapScreenState.activeNavigation ? 190 : 344),
+              child: _buildAdminQuickMapToolbar(),
             ),
 
           // 1.1b CONTRÔLES TOP-DROITE DESKTOP : Statut hors-ligne + sélecteur Cartes • 3D
@@ -3886,6 +3926,274 @@ class _HomeMapScreenState extends ConsumerState<HomeMapScreen> {
                 Icons.keyboard_arrow_up_rounded,
                 color: Color(0xFF64748B),
                 size: 22,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Coordonnées GPS actuelles pour les actions terrain Admin en 1 clic.
+  LatLng _liveAdminLatLng() {
+    final lastGps = ref.read(locationServiceProvider).last;
+    final currentLoc = ref.read(currentLocationProvider);
+    return LatLng(
+      lastGps?.latitude ?? currentLoc.lat,
+      lastGps?.longitude ?? currentLoc.lon,
+    );
+  }
+
+  /// Enregistre immédiatement un feu tricolore à la position GPS courante (1 clic).
+  Future<void> _declareTrafficSignalHere() async {
+    if (_isSavingAdminQuickAction) return;
+    setState(() => _isSavingAdminQuickAction = true);
+    try {
+      final pos = _liveAdminLatLng();
+      final repo = ref.read(adminRepositoryProvider);
+      await repo.addTrafficSignal(
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        name:
+            'Feu tricolore (${pos.latitude.toStringAsFixed(4)}, ${pos.longitude.toStringAsFixed(4)})',
+      );
+      ref.invalidate(adminRoadFeaturesProvider);
+      final updated = await ref
+          .read(adminRoadFeaturesProvider.future)
+          .catchError((_) => const <RoadFeatureModel>[]);
+      await ref.read(mapServiceProvider).setRoadFeatures(updated);
+      if (!mounted) return;
+      AppSnackbar.showSuccess(
+        context,
+        title: '🚦 Feu enregistré',
+        message: 'Affiché sur la carte et actif dans le guidage vocal.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      AppSnackbar.showError(
+        context,
+        title: 'Erreur feu tricolore',
+        message: 'Impossible d\'enregistrer ce feu : $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingAdminQuickAction = false);
+      }
+    }
+  }
+
+  /// Formulaire rapide pour ajouter un repère burkinabè (pharmacie, kiosque, église, arbre...)
+  /// exploité dans le couloir de 20 m avant chaque virage.
+  Future<void> _showQuickLandmarkDialog() async {
+    final pos = _liveAdminLatLng();
+    final nameCtrl = TextEditingController();
+    final quartierCtrl = TextEditingController();
+    const types = <String, String>{
+      'pharmacie': 'Pharmacie',
+      'kiosque': 'Kiosque',
+      'eglise': 'Église',
+      'mosquee': 'Mosquée',
+      'grand_arbre': 'Grand arbre',
+      'station': 'Station',
+      'maquis': 'Maquis',
+      'rond_point': 'Rond-point',
+    };
+    String selectedType = 'pharmacie';
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.place_rounded, color: Color(0xFF047857)),
+              SizedBox(width: 8),
+              Flexible(child: Text('Nouveau repère Burkinabè')),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'GPS : ${pos.latitude.toStringAsFixed(5)}, ${pos.longitude.toStringAsFixed(5)} • Couloir 20 m',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameCtrl,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Nom exact du repère',
+                    hintText: 'Ex: Pharmacie X, Kiosque Wend-Panga...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: quartierCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Quartier (optionnel)',
+                    hintText: 'Ex: Patte d\'Oie, Gounghin...',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Type de repère',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: types.entries.map((entry) {
+                    final active = selectedType == entry.key;
+                    return ChoiceChip(
+                      label: Text(entry.value),
+                      selected: active,
+                      onSelected: (_) =>
+                          setDialogState(() => selectedType = entry.key),
+                    );
+                  }).toList(),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                final nom = nameCtrl.text.trim();
+                if (nom.isEmpty) return;
+                await ref.read(adminRepositoryProvider).createLandmark(
+                  nom: nom,
+                  latitude: pos.latitude,
+                  longitude: pos.longitude,
+                  typeRepere: selectedType,
+                  visibiliteMetres: 20.0,
+                  quartier: quartierCtrl.text.trim().isEmpty
+                      ? null
+                      : quartierCtrl.text.trim(),
+                );
+                if (ctx.mounted) Navigator.of(ctx).pop(true);
+              },
+              icon: const Icon(Icons.save_rounded, size: 18),
+              label: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameCtrl.dispose();
+    quartierCtrl.dispose();
+
+    if (saved == true && mounted) {
+      ref.invalidate(landmarksProvider);
+      AppSnackbar.showSuccess(
+        context,
+        title: '📍 Repère ajouté',
+        message: 'Guidage vocal enrichi sur ce carrefour.',
+      );
+    }
+  }
+
+  /// Barre flottante visible uniquement par l'Admin directement sur la carte Explorer.
+  Widget _buildAdminQuickMapToolbar() {
+    final pos = _liveAdminLatLng();
+    return Container(
+      key: const Key('admin_quick_map_toolbar'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F172A).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.28),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _buildAdminQuickButton(
+            key: const Key('btn_admin_quick_signal'),
+            icon: Icons.traffic_rounded,
+            label: _isSavingAdminQuickAction ? 'Envoi...' : 'Feu ici',
+            color: const Color(0xFF10B981),
+            onTap: _isSavingAdminQuickAction ? null : _declareTrafficSignalHere,
+          ),
+          _buildAdminQuickButton(
+            key: const Key('btn_admin_quick_landmark'),
+            icon: Icons.add_location_alt_rounded,
+            label: 'Repère',
+            color: const Color(0xFF38BDF8),
+            onTap: _showQuickLandmarkDialog,
+          ),
+          _buildAdminQuickButton(
+            key: const Key('btn_admin_quick_block'),
+            icon: Icons.block_rounded,
+            label: 'Barrer',
+            color: const Color(0xFFEF4444),
+            onTap: () => DeclareMaintenanceDialog.show(
+              context,
+              initialLat: pos.latitude,
+              initialLon: pos.longitude,
+            ),
+          ),
+          _buildAdminQuickButton(
+            key: const Key('btn_admin_quick_3d'),
+            icon: Icons.apartment_rounded,
+            label: '3D',
+            color: const Color(0xFFF59E0B),
+            onTap: () => AddBuilding3dDialog.show(context),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdminQuickButton({
+    required Key key,
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: key,
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.18),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withValues(alpha: 0.45)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ],
           ),

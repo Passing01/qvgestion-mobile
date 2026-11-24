@@ -93,6 +93,39 @@ class AdminRepository {
     }
   }
 
+  /// Enregistre un repère local burkinabè (pharmacie, kiosque, église, arbre, etc.)
+  /// utilisé par la phrase de guidage (« Dans 100 m, après ..., tournez à gauche »).
+  Future<Map<String, dynamic>> createLandmark({
+    required String nom,
+    required double latitude,
+    required double longitude,
+    String typeRepere = 'pharmacie',
+    double visibiliteMetres = 20.0,
+    int importance = 3,
+    String ville = 'Ouagadougou',
+    String? quartier,
+  }) async {
+    try {
+      final response = await apiClient.post<dynamic>(
+        ApiEndpoints.guidanceLandmarks,
+        data: {
+          'nom': nom,
+          'latitude': latitude,
+          'longitude': longitude,
+          'type_repere': typeRepere,
+          'visibilite_metres': visibiliteMetres,
+          'importance': importance,
+          'ville': ville,
+          if (quartier != null && quartier.isNotEmpty) 'quartier': quartier,
+        },
+      );
+      return Map<String, dynamic>.from(response.data as Map);
+    } catch (e, stack) {
+      AppLogger.e('Erreur lors de la création du repère local', e, stack);
+      rethrow;
+    }
+  }
+
   // ==========================================
   // --- B2B & API Keys (Monétisation & API) ---
   // ==========================================

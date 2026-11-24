@@ -8,7 +8,9 @@ import 'package:qvgestion_mobile/core/theme/map_theme.dart';
 import 'package:qvgestion_mobile/core/utils/app_logger.dart';
 import 'package:qvgestion_mobile/core/utils/map_pin_generator.dart';
 import 'package:qvgestion_mobile/features/guidance/data/models/radar_scene_model.dart';
+import 'package:qvgestion_mobile/features/guidance/data/models/road_feature_model.dart';
 import 'package:qvgestion_mobile/features/places/data/models/place_model.dart';
+import 'package:qvgestion_mobile/features/reports/data/models/report_model.dart';
 import 'package:qvgestion_mobile/features/routes/data/models/route_model.dart';
 
 /// Interface unifiée cachant le moteur cartographique au reste de l'application
@@ -62,6 +64,8 @@ abstract class MapService {
   Future<void> setTransportMode(String? mode);
   Future<void> setSelectedPlace(PlaceModel? place);
   Future<void> setMonuments3dGeoJson(Map<String, dynamic> geojson);
+  Future<void> setRoadFeatures(List<RoadFeatureModel> features) async {}
+  Future<void> setReports(List<ReportModel> reports) async {}
   Future<void> setCameraTilt(double tilt);
   MapTheme get currentTheme;
   void dispose();
@@ -101,7 +105,19 @@ class MapLibreMapService implements MapService {
 
   static const String monuments3dSourceId = 'fasonav-monuments-3d-source';
   static const String monuments3dExtrusionLayerId = 'fasonav-monuments-3d-extrusion';
+  static const String monuments3dFootprintLayerId = 'fasonav-monuments-3d-footprint';
   static const String monuments3dLabelsLayerId = 'fasonav-monuments-3d-labels';
+
+  static const String roadFeaturesSourceId = 'fasonav-road-features-source';
+  static const String roadFeaturesCircleLayerId = 'fasonav-road-features-circle';
+  static const String roadFeaturesLabelLayerId = 'fasonav-road-features-label';
+
+  static const String reportsOverlaySourceId = 'fasonav-reports-source';
+  static const String reportsOverlayCircleLayerId = 'fasonav-reports-circle';
+  static const String reportsOverlayLabelLayerId = 'fasonav-reports-label';
+
+  List<RoadFeatureModel> _cachedRoadFeatures = const [];
+  List<ReportModel> _cachedReports = const [];
 
   static const String userLocationSourceId = 'fasonav-user-location-source';
   static const String userLocationAuraLayerId = 'fasonav-user-location-aura';
@@ -610,7 +626,16 @@ class MapLibreMapService implements MapService {
         enableInteraction: false,
       );
 
-      // 2.4 Mode Faso 3D : Lueur d'itinéraire + Monuments & Échangeurs extrudés en 3D
+      // 2.4 Bâtiments & Monuments 3D (extrusion en mode Faso 3D, repère/libellé visible sur toutes les cartes)
+      final monumentsData = _cachedMonumentsGeoJson ??
+          RadarSceneModel.buildFallbackMonumentsGeoJson();
+      await _safeAddGeoJsonSource(
+        c,
+        existingSources,
+        monuments3dSourceId,
+        monumentsData,
+      );
+
       if (theme.is3D) {
         await _safeAddLineLayer(
           c,
@@ -630,14 +655,6 @@ class MapLibreMapService implements MapService {
           enableInteraction: false,
         );
 
-        final monumentsData = _cachedMonumentsGeoJson ??
-            RadarSceneModel.buildFallbackMonumentsGeoJson();
-        await _safeAddGeoJsonSource(
-          c,
-          existingSources,
-          monuments3dSourceId,
-          monumentsData,
-        );
         await _safeAddFillExtrusionLayer(
           c,
           existingLayers,
@@ -666,25 +683,131 @@ class MapLibreMapService implements MapService {
           belowLayerId: placesPointsLayerId,
           enableInteraction: false,
         );
-        await _safeAddSymbolLayer(
+      } else {
+        await _safeAddCircleLayer(
           c,
           existingLayers,
           monuments3dSourceId,
-          monuments3dLabelsLayerId,
-          const SymbolLayerProperties(
-            textField: [Expressions.get, 'name'],
-            textFont: ['Noto Sans Bold'],
-            textSize: 11.5,
-            textColor: '#1E293B',
-            textHaloColor: '#FFFFFF',
-            textHaloWidth: 2.2,
-            textOffset: [0, -1.2],
-            textAllowOverlap: false,
-            textOptional: true,
+          monuments3dFootprintLayerId,
+          const CircleLayerProperties(
+            circleColor: [
+              Expressions.coalesce,
+              [Expressions.get, 'color'],
+              '#D97706',
+            ],
+            circleRadius: 7.5,
+            circleOpacity: 0.85,
+            circleStrokeColor: '#FFFFFF',
+            circleStrokeWidth: 2.0,
           ),
+          belowLayerId: placesPointsLayerId,
           enableInteraction: false,
         );
       }
+      await _safeAddSymbolLayer(
+        c,
+        existingLayers,
+        monuments3dSourceId,
+        monuments3dLabelsLayerId,
+        const SymbolLayerProperties(
+          textField: [Expressions.get, 'name'],
+          textFont: ['Noto Sans Bold'],
+          textSize: 11.5,
+          textColor: '#1E293B',
+          textHaloColor: '#FFFFFF',
+          textHaloWidth: 2.2,
+          textOffset: [0, -1.2],
+          textAllowOverlap: false,
+          textOptional: true,
+        ),
+        enableInteraction: false,
+      );
+
+      // 2.5 Éléments routiers (Feux tricolores 🚦, ponts, échangeurs) visibles directement sur la carte
+      await _safeAddGeoJsonSource(
+        c,
+        existingSources,
+        roadFeaturesSourceId,
+        _buildRoadFeaturesGeoJson(_cachedRoadFeatures),
+      );
+      await _safeAddCircleLayer(
+        c,
+        existingLayers,
+        roadFeaturesSourceId,
+        roadFeaturesCircleLayerId,
+        const CircleLayerProperties(
+          circleColor: [
+            Expressions.coalesce,
+            [Expressions.get, 'color'],
+            '#DC2626',
+          ],
+          circleRadius: 8.5,
+          circleStrokeColor: '#FCD116',
+          circleStrokeWidth: 2.5,
+        ),
+        enableInteraction: false,
+      );
+      await _safeAddSymbolLayer(
+        c,
+        existingLayers,
+        roadFeaturesSourceId,
+        roadFeaturesLabelLayerId,
+        SymbolLayerProperties(
+          textField: [Expressions.get, 'label'],
+          textFont: const ['Noto Sans Bold'],
+          textSize: 10.5,
+          textColor: theme.label,
+          textHaloColor: theme.halo,
+          textHaloWidth: 2.0,
+          textOffset: const [0, 1.35],
+          textAllowOverlap: false,
+          textOptional: true,
+        ),
+        enableInteraction: false,
+      );
+
+      // 2.6 Voies bloquées & incidents actifs visibles directement sur la carte
+      await _safeAddGeoJsonSource(
+        c,
+        existingSources,
+        reportsOverlaySourceId,
+        _buildReportsGeoJson(_cachedReports),
+      );
+      await _safeAddCircleLayer(
+        c,
+        existingLayers,
+        reportsOverlaySourceId,
+        reportsOverlayCircleLayerId,
+        const CircleLayerProperties(
+          circleColor: [
+            Expressions.coalesce,
+            [Expressions.get, 'color'],
+            '#B91C1C',
+          ],
+          circleRadius: 10.0,
+          circleStrokeColor: '#FFFFFF',
+          circleStrokeWidth: 2.5,
+        ),
+        enableInteraction: false,
+      );
+      await _safeAddSymbolLayer(
+        c,
+        existingLayers,
+        reportsOverlaySourceId,
+        reportsOverlayLabelLayerId,
+        SymbolLayerProperties(
+          textField: [Expressions.get, 'label'],
+          textFont: const ['Noto Sans Bold'],
+          textSize: 11.0,
+          textColor: '#991B1B',
+          textHaloColor: '#FFFFFF',
+          textHaloWidth: 2.2,
+          textOffset: const [0, 1.4],
+          textAllowOverlap: false,
+          textOptional: true,
+        ),
+        enableInteraction: false,
+      );
 
       // 3. Initialisation de la source et couches du lieu sélectionné (repère de destination / pin)
       final selectedGeoJson = _buildPointGeoJson(
@@ -1001,13 +1124,91 @@ class MapLibreMapService implements MapService {
   Future<void> setMonuments3dGeoJson(Map<String, dynamic> geojson) async {
     _cachedMonumentsGeoJson = geojson;
     final c = _controller;
-    if (c == null || !_layersConfigured || !_currentTheme.is3D) return;
+    if (c == null || !_layersConfigured) return;
 
     try {
       await c.setGeoJsonSource(monuments3dSourceId, geojson);
     } catch (e) {
       AppLogger.d('Mise à jour source monuments 3D: $e');
     }
+  }
+
+  @override
+  Future<void> setRoadFeatures(List<RoadFeatureModel> features) async {
+    _cachedRoadFeatures = List.unmodifiable(features);
+    final c = _controller;
+    if (c == null || !_layersConfigured) return;
+
+    try {
+      await c.setGeoJsonSource(
+        roadFeaturesSourceId,
+        _buildRoadFeaturesGeoJson(_cachedRoadFeatures),
+      );
+    } catch (e) {
+      AppLogger.d('Mise à jour source éléments routiers MapLibre: $e');
+    }
+  }
+
+  @override
+  Future<void> setReports(List<ReportModel> reports) async {
+    _cachedReports = List.unmodifiable(reports);
+    final c = _controller;
+    if (c == null || !_layersConfigured) return;
+
+    try {
+      await c.setGeoJsonSource(
+        reportsOverlaySourceId,
+        _buildReportsGeoJson(_cachedReports),
+      );
+    } catch (e) {
+      AppLogger.d('Mise à jour source signalements MapLibre: $e');
+    }
+  }
+
+  Map<String, dynamic> _buildRoadFeaturesGeoJson(List<RoadFeatureModel> features) {
+    return {
+      'type': 'FeatureCollection',
+      'features': features.map((f) {
+        final isSig = f.isTrafficSignal;
+        return {
+          'type': 'Feature',
+          'id': f.id,
+          'geometry': {
+            'type': 'Point',
+            'coordinates': [f.longitude, f.latitude],
+          },
+          'properties': {
+            'kind': f.kind.slug,
+            'color': isSig ? '#EF4444' : '#2563EB',
+            'label': isSig
+                ? '🚦 ${f.name ?? "Feu"}'
+                : (f.name ?? f.kind.label),
+          },
+        };
+      }).toList(),
+    };
+  }
+
+  Map<String, dynamic> _buildReportsGeoJson(List<ReportModel> reports) {
+    return {
+      'type': 'FeatureCollection',
+      'features': reports.map((r) {
+        final isClosed = r.typeIncident.toLowerCase() == 'road_closed';
+        return {
+          'type': 'Feature',
+          'id': r.id,
+          'geometry': {
+            'type': 'Point',
+            'coordinates': [r.longitude, r.latitude],
+          },
+          'properties': {
+            'type': r.typeIncident,
+            'color': isClosed ? '#B91C1C' : '#EA580C',
+            'label': isClosed ? '⛔ Voie barrée' : '⚠️ ${r.label}',
+          },
+        };
+      }).toList(),
+    };
   }
 
   @override
